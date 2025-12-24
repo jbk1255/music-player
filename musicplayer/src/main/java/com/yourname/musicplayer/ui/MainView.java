@@ -5,28 +5,16 @@ import javafx.geometry.Orientation;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-
-/**
- * Merge 1: UI shell only (no functionality yet)
- * Layout:
- *  - Top: search field + import button
- *  - Center: songs list
- *  - Right: playlists list
- *  - Bottom: playback controls + now playing label
- */
 public class MainView {
 
     private final BorderPane root = new BorderPane();
 
-    // Top controls
     private final TextField searchField = new TextField();
     private final Button importFolderButton = new Button("Import Folder");
 
-    // Main lists
     private final ListView<String> songsListView = new ListView<>();
     private final ListView<String> playlistsListView = new ListView<>();
 
-    // Bottom controls
     private final Button prevButton = new Button("⏮");
     private final Button playPauseButton = new Button("▶");
     private final Button nextButton = new Button("⏭");
@@ -45,7 +33,6 @@ public class MainView {
     private void buildLayout() {
         root.setPadding(new Insets(12));
 
-        // ----- Top bar -----
         Label title = new Label("Music Player");
         title.getStyleClass().add("title");
 
@@ -59,12 +46,10 @@ public class MainView {
         topBar.setPadding(new Insets(0, 0, 10, 0));
         root.setTop(topBar);
 
-        // ----- Center area (songs) -----
         VBox songsPane = new VBox(6, sectionHeader("Library"), songsListView);
         songsPane.setPadding(new Insets(0, 10, 0, 0));
         VBox.setVgrow(songsListView, Priority.ALWAYS);
 
-        // ----- Right area (playlists) -----
         Button newPlaylistButton = new Button("New Playlist");
         Button addToPlaylistButton = new Button("Add Selected Song");
 
@@ -78,13 +63,11 @@ public class MainView {
         playlistsPane.setPrefWidth(240);
         VBox.setVgrow(playlistsListView, Priority.ALWAYS);
 
-        // Split: songs | playlists
         SplitPane splitPane = new SplitPane(songsPane, playlistsPane);
         splitPane.setOrientation(Orientation.HORIZONTAL);
         splitPane.setDividerPositions(0.70);
         root.setCenter(splitPane);
 
-        // ----- Bottom bar -----
         HBox controls = new HBox(10, prevButton, playPauseButton, nextButton);
         controls.setPadding(new Insets(10, 0, 0, 0));
 
@@ -95,12 +78,10 @@ public class MainView {
         bottomBar.setPadding(new Insets(10, 0, 0, 0));
         root.setBottom(bottomBar);
 
-        // Disable buttons for now (until playback is implemented)
         prevButton.setDisable(true);
         playPauseButton.setDisable(true);
         nextButton.setDisable(true);
 
-        // Store playlist buttons for later (right now they do nothing)
         newPlaylistButton.setDisable(true);
         addToPlaylistButton.setDisable(true);
     }
@@ -126,7 +107,6 @@ public class MainView {
     }
 
     private void wirePlaceholderHandlers() {
-        // Placeholder: show selection in "Now Playing" label (no audio yet)
         songsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 nowPlayingLabel.setText("Selected: " + newVal);
@@ -140,7 +120,6 @@ public class MainView {
         );
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
-            // Placeholder only: no filtering yet
         });
     }
 }

@@ -13,7 +13,6 @@ public class App extends Application {
 
         Scene scene = new Scene(mainView.getRoot(), 1000, 620);
 
-        // Optional: attach CSS if you add it in Step 3
         scene.getStylesheets().add(
                 getClass().getResource("/com/yourname/musicplayer/ui/UIStyles.css").toExternalForm()
         );
