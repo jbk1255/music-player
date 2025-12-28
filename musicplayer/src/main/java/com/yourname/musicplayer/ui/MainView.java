@@ -1,10 +1,20 @@
 package com.yourname.musicplayer.ui;
 
+import com.yourname.musicplayer.domain.Song;
+import com.yourname.musicplayer.service.LibraryService;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.stage.DirectoryChooser;
+
+import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
+
 public class MainView {
 
     private final BorderPane root = new BorderPane();
@@ -12,7 +22,7 @@ public class MainView {
     private final TextField searchField = new TextField();
     private final Button importFolderButton = new Button("Import Folder");
 
-    private final ListView<String> songsListView = new ListView<>();
+    private final ListView<Song> songsListView = new ListView<>();
     private final ListView<String> playlistsListView = new ListView<>();
 
     private final Button prevButton = new Button("⏮");
@@ -20,10 +30,16 @@ public class MainView {
     private final Button nextButton = new Button("⏭");
     private final Label nowPlayingLabel = new Label("Now Playing: —");
 
+    private final Label statusLabel = new Label("");
+
+    private final LibraryService libraryService = new LibraryService();
+    private final ObservableList<Song> songsObservable = FXCollections.observableArrayList();
+
     public MainView() {
         buildLayout();
-        seedPlaceholderData();
-        wirePlaceholderHandlers();
+        seedPlaceholderPlaylists();
+        wireHandlers();
+        configureListRendering();
     }
 
     public Parent getRoot() {
@@ -46,7 +62,7 @@ public class MainView {
         topBar.setPadding(new Insets(0, 0, 10, 0));
         root.setTop(topBar);
 
-        VBox songsPane = new VBox(6, sectionHeader("Library"), songsListView);
+        VBox songsPane = new VBox(6, sectionHeader("Library"), statusLabel, songsListView);
         songsPane.setPadding(new Insets(0, 10, 0, 0));
         VBox.setVgrow(songsListView, Priority.ALWAYS);
 
@@ -84,6 +100,12 @@ public class MainView {
 
         newPlaylistButton.setDisable(true);
         addToPlaylistButton.setDisable(true);
+
+        songsListView.setItems(songsObservable);
+
+        statusLabel.setWrapText(true);
+        statusLabel.setMinHeight(18);
+        statusLabel.setText("");
     }
 
     private Label sectionHeader(String text) {
@@ -92,21 +114,29 @@ public class MainView {
         return label;
     }
 
-    private void seedPlaceholderData() {
-        songsListView.getItems().addAll(
-                "Example Song 1 — Unknown Artist",
-                "Example Song 2 — Unknown Artist",
-                "Example Song 3 — Unknown Artist"
-        );
+    private void configureListRendering() {
+        songsListView.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(Song song, boolean empty) {
+                super.updateItem(song, empty);
+                if (empty || song == null) {
+                    setText(null);
+                } else {
+                    setText(song.toString());
+                }
+            }
+        });
+    }
 
-        playlistsListView.getItems().addAll(
+    private void seedPlaceholderPlaylists() {
+        playlistsListView.getItems().setAll(
                 "Favorites",
                 "Study Mix",
                 "Gym"
         );
     }
 
-    private void wirePlaceholderHandlers() {
+    private void wireHandlers() {
         songsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 nowPlayingLabel.setText("Selected: " + newVal);
@@ -115,11 +145,39 @@ public class MainView {
             }
         });
 
-        importFolderButton.setOnAction(e ->
-                new Alert(Alert.AlertType.INFORMATION, "Import will be implemented in a later merge.").showAndWait()
-        );
+        importFolderButton.setOnAction(e -> handleImportFolder());
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
         });
+    }
+
+    private void handleImportFolder() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Select Music Folder");
+        File selected = chooser.showDialog(root.getScene().getWindow());
+
+        if (selected == null) {
+            return;
+        }
+
+        try {
+            Path folderPath = selected.toPath();
+
+            libraryService.importFolder(folderPath);
+            List<Song> songs = libraryService.getAllSongs();
+
+            songsObservable.setAll(songs);
+
+            if (songs.isEmpty()) {
+                statusLabel.setText("No supported audio files found in that folder (.mp3, .wav, .m4a).");
+            } else {
+                statusLabel.setText("Imported " + songs.size() + " song(s) from: " + selected.getName());
+            }
+
+        } catch (IllegalArgumentException ex) {
+            statusLabel.setText("Import failed: " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            statusLabel.setText("Import failed due to an unexpected error.");
+        }
     }
 }
