@@ -1,2 +1,4 @@
-com/yourname/musicplayer/App.class
+com/yourname/musicplayer/domain/Song.class
 com/yourname/musicplayer/ui/MainView.class
+com/yourname/musicplayer/App.class
+com/yourname/musicplayer/domain/Playlist.class
