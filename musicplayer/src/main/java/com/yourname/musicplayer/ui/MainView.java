@@ -1,7 +1,9 @@
 package com.yourname.musicplayer.ui;
 
 import com.yourname.musicplayer.domain.Song;
+import com.yourname.musicplayer.player.AudioPlayer;
 import com.yourname.musicplayer.service.LibraryService;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -25,7 +27,7 @@ public class MainView {
     private final ListView<Song> songsListView = new ListView<>();
     private final ListView<String> playlistsListView = new ListView<>();
 
-    private final Button prevButton = new Button("⏮");
+    private final Button prevButton = new Button("⏹");
     private final Button playPauseButton = new Button("▶");
     private final Button nextButton = new Button("⏭");
     private final Label nowPlayingLabel = new Label("Now Playing: —");
@@ -35,11 +37,20 @@ public class MainView {
     private final LibraryService libraryService = new LibraryService();
     private final ObservableList<Song> songsObservable = FXCollections.observableArrayList();
 
+    private final AudioPlayer audioPlayer = new AudioPlayer();
+    private Song selectedSong = null;
+
     public MainView() {
         buildLayout();
         seedPlaceholderPlaylists();
-        wireHandlers();
         configureListRendering();
+        wireHandlers();
+
+        // Surface MediaPlayer errors into the UI (and keep them visible)
+        audioPlayer.setErrorListener(msg -> Platform.runLater(() -> {
+            statusLabel.setText("Playback failed: " + msg);
+            playPauseButton.setText("▶");
+        }));
     }
 
     public Parent getRoot() {
@@ -119,11 +130,7 @@ public class MainView {
             @Override
             protected void updateItem(Song song, boolean empty) {
                 super.updateItem(song, empty);
-                if (empty || song == null) {
-                    setText(null);
-                } else {
-                    setText(song.toString());
-                }
+                setText((empty || song == null) ? null : song.toString());
             }
         });
     }
@@ -138,17 +145,74 @@ public class MainView {
 
     private void wireHandlers() {
         songsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            selectedSong = newVal;
+
             if (newVal != null) {
                 nowPlayingLabel.setText("Selected: " + newVal);
+                playPauseButton.setDisable(false);
+                prevButton.setDisable(false);
+                nextButton.setDisable(true);
             } else {
                 nowPlayingLabel.setText("Now Playing: —");
+                playPauseButton.setDisable(true);
+                prevButton.setDisable(true);
+                nextButton.setDisable(true);
+            }
+
+            playPauseButton.setText("▶");
+
+            if (newVal != null) {
+                System.out.println("[UI] Selected song path: " + newVal.getPath());
             }
         });
 
         importFolderButton.setOnAction(e -> handleImportFolder());
+        playPauseButton.setOnAction(e -> handlePlayPause());
+
+        prevButton.setOnAction(e -> {
+            audioPlayer.stopAndDispose();
+            playPauseButton.setText("▶");
+            nowPlayingLabel.setText("Stopped.");
+            statusLabel.setText("");
+        });
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            // later merge
         });
+    }
+
+    private void handlePlayPause() {
+        if (selectedSong == null) {
+            statusLabel.setText("Select a song first.");
+            return;
+        }
+
+        try {
+            if (audioPlayer.getCurrentSong() == null || !selectedSong.equals(audioPlayer.getCurrentSong())) {
+                statusLabel.setText(""); // clear old errors before starting
+                audioPlayer.loadAndPlay(selectedSong);
+                nowPlayingLabel.setText("Now Playing: " + selectedSong);
+                playPauseButton.setText("⏸");
+                return;
+            }
+
+            if (audioPlayer.isPlaying()) {
+                audioPlayer.pause();
+                playPauseButton.setText("▶");
+                nowPlayingLabel.setText("Paused: " + selectedSong);
+            } else {
+                audioPlayer.resume();
+                playPauseButton.setText("⏸");
+                nowPlayingLabel.setText("Now Playing: " + selectedSong);
+            }
+
+        } catch (IllegalArgumentException ex) {
+            statusLabel.setText("Playback error: " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            // Synchronous errors only; async errors go through AudioPlayer's errorListener
+            ex.printStackTrace();
+            statusLabel.setText("Playback failed (see console for details).");
+        }
     }
 
     private void handleImportFolder() {
@@ -156,9 +220,7 @@ public class MainView {
         chooser.setTitle("Select Music Folder");
         File selected = chooser.showDialog(root.getScene().getWindow());
 
-        if (selected == null) {
-            return;
-        }
+        if (selected == null) return;
 
         try {
             Path folderPath = selected.toPath();
@@ -167,6 +229,16 @@ public class MainView {
             List<Song> songs = libraryService.getAllSongs();
 
             songsObservable.setAll(songs);
+
+            selectedSong = null;
+            songsListView.getSelectionModel().clearSelection();
+            audioPlayer.stopAndDispose();
+            playPauseButton.setText("▶");
+            nowPlayingLabel.setText("Now Playing: —");
+
+            prevButton.setDisable(true);
+            playPauseButton.setDisable(true);
+            nextButton.setDisable(true);
 
             if (songs.isEmpty()) {
                 statusLabel.setText("No supported audio files found in that folder (.mp3, .wav, .m4a).");
@@ -177,7 +249,8 @@ public class MainView {
         } catch (IllegalArgumentException ex) {
             statusLabel.setText("Import failed: " + ex.getMessage());
         } catch (RuntimeException ex) {
-            statusLabel.setText("Import failed due to an unexpected error.");
+            ex.printStackTrace();
+            statusLabel.setText("Import failed due to an unexpected error (see console).");
         }
     }
 }

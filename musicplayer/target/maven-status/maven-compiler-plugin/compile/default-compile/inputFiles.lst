@@ -2,4 +2,5 @@
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/App.java
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/ui/MainView.java
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/service/LibraryService.java
+/home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/player/AudioPlayer.java
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/domain/Song.java

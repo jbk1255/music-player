@@ -1,3 +1,4 @@
+com/yourname/musicplayer/player/AudioPlayer.class
 com/yourname/musicplayer/domain/Playlist.class
 com/yourname/musicplayer/domain/Song.class
 com/yourname/musicplayer/ui/MainView.class
