@@ -22,9 +22,9 @@ public class LibraryService {
 
         try (Stream<Path> paths = Files.walk(folder)) {
             paths.filter(Files::isRegularFile)
-                 .filter(this::isSupportedAudioFile)
-                 .sorted()
-                 .forEach(this::addFileAsSong);
+                    .filter(this::isSupportedAudioFile)
+                    .sorted()
+                    .forEach(this::addFileAsSong);
         } catch (IOException e) {
             throw new RuntimeException("Failed to scan folder: " + folder, e);
         }
@@ -39,6 +39,27 @@ public class LibraryService {
             }
         }
         return Collections.unmodifiableList(songs);
+    }
+
+    // ✅ Merge 7: simple search
+    public List<Song> search(String query) {
+        if (query == null || query.isBlank()) {
+            return getAllSongs();
+        }
+
+        String q = query.trim().toLowerCase(Locale.ROOT);
+
+        List<Song> results = new ArrayList<>();
+        for (Song s : getAllSongs()) {
+            String title = safeLower(s.getTitle());
+            String artist = safeLower(s.getArtist());
+            String album = safeLower(s.getAlbum());
+
+            if (title.contains(q) || artist.contains(q) || album.contains(q)) {
+                results.add(s);
+            }
+        }
+        return results;
     }
 
     public Optional<Song> getSongById(String id) {
@@ -108,5 +129,9 @@ public class LibraryService {
             copy.put(e.getKey(), Collections.unmodifiableList(new ArrayList<>(e.getValue())));
         }
         return Collections.unmodifiableMap(copy);
+    }
+
+    private String safeLower(String s) {
+        return (s == null) ? "" : s.toLowerCase(Locale.ROOT);
     }
 }

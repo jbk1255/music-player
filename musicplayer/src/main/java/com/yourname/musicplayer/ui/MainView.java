@@ -30,14 +30,17 @@ public class MainView {
     private final Button playPauseButton = new Button("Play");
     private final Button nextButton = new Button("Next");
 
-    // ✅ Two separate labels:
     private final Label selectedLabel = new Label("Selected: —");
     private final Label nowPlayingLabel = new Label("Now Playing: —"); // conditional hint label
 
     private final Label statusLabel = new Label("");
 
     private final LibraryService libraryService = new LibraryService();
+
+    // ✅ source list (full library)
     private final ObservableList<Song> songsObservable = FXCollections.observableArrayList();
+    // ✅ displayed list (filtered results)
+    private final ObservableList<Song> filteredSongs = FXCollections.observableArrayList();
 
     private final AudioPlayer audioPlayer = new AudioPlayer();
     private final PlaybackQueue playbackQueue = new PlaybackQueue();
@@ -99,7 +102,6 @@ public class MainView {
         nowPlayingLabel.setVisible(false);
         nowPlayingLabel.setManaged(false);
 
-        // ✅ bottom-right: Selected + (conditional) Now Playing stacked
         VBox rightLabels = new VBox(2, selectedLabel, nowPlayingLabel);
 
         Region bottomSpacer = new Region();
@@ -113,7 +115,8 @@ public class MainView {
         playPauseButton.setDisable(true);
         nextButton.setDisable(true);
 
-        songsListView.setItems(songsObservable);
+        // ✅ IMPORTANT: ListView always shows filtered list
+        songsListView.setItems(filteredSongs);
 
         statusLabel.setWrapText(true);
         statusLabel.setMinHeight(18);
@@ -141,6 +144,27 @@ public class MainView {
 
     private void wireHandlers() {
 
+        // ✅ Merge 7: search filtering (updates displayed list + queue)
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            List<Song> results = libraryService.search(newVal);
+
+            filteredSongs.setAll(results);
+            playbackQueue.setQueue(filteredSongs);
+
+            // Reset selection state (avoid stale index issues)
+            selectedSong = null;
+            songsListView.getSelectionModel().clearSelection();
+
+            selectedLabel.setText("Selected: —");
+            updateNowPlayingHint();
+
+            playPauseButton.setDisable(true);
+            prevButton.setDisable(true);
+            nextButton.setDisable(true);
+            playPauseButton.setText("Play");
+        });
+
+        // ✅ Selection listener must read from *filteredSongs* (the displayed list)
         songsListView.getSelectionModel().selectedIndexProperty().addListener((obs, oldIdx, newIdx) -> {
             if (newIdx == null || newIdx.intValue() < 0) {
                 selectedSong = null;
@@ -157,7 +181,7 @@ public class MainView {
             }
 
             int idx = newIdx.intValue();
-            selectedSong = songsObservable.get(idx);
+            selectedSong = filteredSongs.get(idx);
             playbackQueue.playAt(idx);
 
             selectedLabel.setText("Selected: " + selectedSong);
@@ -167,7 +191,6 @@ public class MainView {
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
 
-            // If the selected song is currently playing, show Pause; otherwise Play.
             if (audioPlayer.getCurrentSong() != null
                     && selectedSong.equals(audioPlayer.getCurrentSong())
                     && audioPlayer.isPlaying()) {
@@ -190,7 +213,7 @@ public class MainView {
 
             audioPlayer.loadAndPlay(prev);
             playPauseButton.setText("Pause");
-            updateNowPlayingHint(); // will hide (selected == playing)
+            updateNowPlayingHint();
 
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
@@ -206,7 +229,7 @@ public class MainView {
 
             audioPlayer.loadAndPlay(next);
             playPauseButton.setText("Pause");
-            updateNowPlayingHint(); // will hide (selected == playing)
+            updateNowPlayingHint();
 
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
@@ -220,7 +243,6 @@ public class MainView {
         }
 
         try {
-            // If different song selected, load that song.
             if (audioPlayer.getCurrentSong() == null || !selectedSong.equals(audioPlayer.getCurrentSong())) {
                 audioPlayer.loadAndPlay(selectedSong);
                 playPauseButton.setText("Pause");
@@ -229,11 +251,10 @@ public class MainView {
                 nextButton.setDisable(!playbackQueue.hasNext());
 
                 statusLabel.setText("");
-                updateNowPlayingHint(); // hide after switching playback
+                updateNowPlayingHint();
                 return;
             }
 
-            // Same song -> toggle pause/resume.
             if (audioPlayer.isPlaying()) {
                 audioPlayer.pause();
                 playPauseButton.setText("Play");
@@ -266,9 +287,13 @@ public class MainView {
             libraryService.importFolder(folderPath);
 
             List<Song> songs = libraryService.getAllSongs();
-            songsObservable.setAll(songs);
 
-            playbackQueue.setQueue(songsObservable);
+            // ✅ update source list
+            songsObservable.setAll(songs);
+            // ✅ update displayed list to match (no search yet)
+            filteredSongs.setAll(songs);
+            // ✅ queue uses displayed list
+            playbackQueue.setQueue(filteredSongs);
 
             // Reset playback state
             audioPlayer.stopAndDispose();
