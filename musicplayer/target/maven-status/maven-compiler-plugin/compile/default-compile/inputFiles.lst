@@ -5,3 +5,4 @@
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/service/LibraryService.java
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/player/AudioPlayer.java
 /home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/domain/Song.java
+/home/john/music-player/musicplayer/src/main/java/com/yourname/musicplayer/service/PlaylistService.java

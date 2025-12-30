@@ -1,3 +1,4 @@
+com/yourname/musicplayer/service/PlaylistService.class
 com/yourname/musicplayer/player/AudioPlayer.class
 com/yourname/musicplayer/domain/Playlist.class
 com/yourname/musicplayer/domain/Song.class

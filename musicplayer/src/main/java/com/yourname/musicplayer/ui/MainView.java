@@ -4,6 +4,7 @@ import com.yourname.musicplayer.domain.Song;
 import com.yourname.musicplayer.player.AudioPlayer;
 import com.yourname.musicplayer.player.PlaybackQueue;
 import com.yourname.musicplayer.service.LibraryService;
+import com.yourname.musicplayer.service.PlaylistService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -32,26 +33,37 @@ public class MainView {
 
     private final Label selectedLabel = new Label("Selected: —");
     private final Label nowPlayingLabel = new Label("Now Playing: —"); // conditional hint label
-
     private final Label statusLabel = new Label("");
 
     private final LibraryService libraryService = new LibraryService();
+    private final PlaylistService playlistService = new PlaylistService();
 
-    // ✅ source list (full library)
-    private final ObservableList<Song> songsObservable = FXCollections.observableArrayList();
-    // ✅ displayed list (filtered results)
-    private final ObservableList<Song> filteredSongs = FXCollections.observableArrayList();
+    // ✅ Single displayed list. We swap its content between Library vs Playlist view.
+    private final ObservableList<Song> displayedSongs = FXCollections.observableArrayList();
+    private List<Song> librarySongsSnapshot = List.of(); // for returning to Library view
 
     private final AudioPlayer audioPlayer = new AudioPlayer();
     private final PlaybackQueue playbackQueue = new PlaybackQueue();
 
     private Song selectedSong = null;
 
+    // View state
+    private boolean showingPlaylist = false;
+    private String activePlaylistName = null;
+
+    // Playlist UI buttons
+    private final Button newPlaylistButton = new Button("New Playlist");
+    private final Button addToPlaylistButton = new Button("Add to Playlist");
+    private final Button removeFromPlaylistButton = new Button("Remove Song");
+
     public MainView() {
         buildLayout();
-        seedPlaceholderPlaylists();
         configureListRendering();
         wireHandlers();
+
+        // Seed playlists into UI (+ a "Library" entry)
+        refreshPlaylistsList();
+        refreshPlaylistButtons();
     }
 
     public Parent getRoot() {
@@ -78,13 +90,18 @@ public class MainView {
         songsPane.setPadding(new Insets(0, 10, 0, 0));
         VBox.setVgrow(songsListView, Priority.ALWAYS);
 
+        // Playlist actions
+        HBox playlistActions = new HBox(8, newPlaylistButton, addToPlaylistButton, removeFromPlaylistButton);
+        addToPlaylistButton.setDisable(true);
+        removeFromPlaylistButton.setDisable(true);
+
         VBox playlistsPane = new VBox(
                 6,
                 sectionHeader("Playlists"),
                 playlistsListView,
-                new HBox(8, new Button("New Playlist"), new Button("Add Selected Song"))
+                playlistActions
         );
-        playlistsPane.setPrefWidth(240);
+        playlistsPane.setPrefWidth(280);
         VBox.setVgrow(playlistsListView, Priority.ALWAYS);
 
         SplitPane splitPane = new SplitPane(songsPane, playlistsPane);
@@ -98,7 +115,7 @@ public class MainView {
         HBox controls = new HBox(10, prevButton, playPauseButton, nextButton);
         controls.setPadding(new Insets(10, 0, 0, 0));
 
-        // ✅ Hide by default, and take up NO SPACE when hidden.
+        // Hide by default, and take up NO SPACE when hidden.
         nowPlayingLabel.setVisible(false);
         nowPlayingLabel.setManaged(false);
 
@@ -115,8 +132,7 @@ public class MainView {
         playPauseButton.setDisable(true);
         nextButton.setDisable(true);
 
-        // ✅ IMPORTANT: ListView always shows filtered list
-        songsListView.setItems(filteredSongs);
+        songsListView.setItems(displayedSongs);
 
         statusLabel.setWrapText(true);
         statusLabel.setMinHeight(18);
@@ -138,33 +154,8 @@ public class MainView {
         });
     }
 
-    private void seedPlaceholderPlaylists() {
-        playlistsListView.getItems().setAll("Favorites", "Study Mix", "Gym");
-    }
-
     private void wireHandlers() {
 
-        // ✅ Merge 7: search filtering (updates displayed list + queue)
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
-            List<Song> results = libraryService.search(newVal);
-
-            filteredSongs.setAll(results);
-            playbackQueue.setQueue(filteredSongs);
-
-            // Reset selection state (avoid stale index issues)
-            selectedSong = null;
-            songsListView.getSelectionModel().clearSelection();
-
-            selectedLabel.setText("Selected: —");
-            updateNowPlayingHint();
-
-            playPauseButton.setDisable(true);
-            prevButton.setDisable(true);
-            nextButton.setDisable(true);
-            playPauseButton.setText("Play");
-        });
-
-        // ✅ Selection listener must read from *filteredSongs* (the displayed list)
         songsListView.getSelectionModel().selectedIndexProperty().addListener((obs, oldIdx, newIdx) -> {
             if (newIdx == null || newIdx.intValue() < 0) {
                 selectedSong = null;
@@ -177,11 +168,13 @@ public class MainView {
                 prevButton.setDisable(true);
                 nextButton.setDisable(true);
                 playPauseButton.setText("Play");
+
+                refreshPlaylistButtons();
                 return;
             }
 
             int idx = newIdx.intValue();
-            selectedSong = filteredSongs.get(idx);
+            selectedSong = displayedSongs.get(idx);
             playbackQueue.playAt(idx);
 
             selectedLabel.setText("Selected: " + selectedSong);
@@ -191,6 +184,7 @@ public class MainView {
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
 
+            // If the selected song is currently playing, show Pause; otherwise Play.
             if (audioPlayer.getCurrentSong() != null
                     && selectedSong.equals(audioPlayer.getCurrentSong())
                     && audioPlayer.isPlaying()) {
@@ -198,6 +192,8 @@ public class MainView {
             } else {
                 playPauseButton.setText("Play");
             }
+
+            refreshPlaylistButtons();
         });
 
         importFolderButton.setOnAction(e -> handleImportFolder());
@@ -217,6 +213,8 @@ public class MainView {
 
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
+
+            refreshPlaylistButtons();
         });
 
         nextButton.setOnAction(e -> {
@@ -233,7 +231,33 @@ public class MainView {
 
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
+
+            refreshPlaylistButtons();
         });
+
+        // ✅ Merge 8 playlist actions
+        newPlaylistButton.setOnAction(e -> handleCreatePlaylist());
+        addToPlaylistButton.setOnAction(e -> handleAddSelectedToPlaylist());
+        removeFromPlaylistButton.setOnAction(e -> handleRemoveSelectedFromPlaylist());
+
+        // Clicking a playlist switches the main list
+        playlistsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal == null) {
+                refreshPlaylistButtons();
+                return;
+            }
+
+            if (newVal.equals("Library")) {
+                switchToLibraryView();
+            } else {
+                switchToPlaylistView(newVal);
+            }
+
+            refreshPlaylistButtons();
+        });
+
+        // Search filter (simple): filters the *currently displayed* list (library or playlist)
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> applySearchFilter(newVal));
     }
 
     private void handlePlayPause() {
@@ -243,6 +267,7 @@ public class MainView {
         }
 
         try {
+            // If different song selected, load that song.
             if (audioPlayer.getCurrentSong() == null || !selectedSong.equals(audioPlayer.getCurrentSong())) {
                 audioPlayer.loadAndPlay(selectedSong);
                 playPauseButton.setText("Pause");
@@ -252,9 +277,11 @@ public class MainView {
 
                 statusLabel.setText("");
                 updateNowPlayingHint();
+                refreshPlaylistButtons();
                 return;
             }
 
+            // Same song -> toggle pause/resume.
             if (audioPlayer.isPlaying()) {
                 audioPlayer.pause();
                 playPauseButton.setText("Play");
@@ -265,13 +292,16 @@ public class MainView {
 
             statusLabel.setText("");
             updateNowPlayingHint();
+            refreshPlaylistButtons();
 
         } catch (IllegalArgumentException ex) {
             statusLabel.setText("Playback error: " + ex.getMessage());
             updateNowPlayingHint();
+            refreshPlaylistButtons();
         } catch (RuntimeException ex) {
             statusLabel.setText("Playback failed (unsupported file or audio backend issue).");
             updateNowPlayingHint();
+            refreshPlaylistButtons();
         }
     }
 
@@ -286,14 +316,10 @@ public class MainView {
             Path folderPath = selected.toPath();
             libraryService.importFolder(folderPath);
 
-            List<Song> songs = libraryService.getAllSongs();
+            librarySongsSnapshot = libraryService.getAllSongs();
+            displayedSongs.setAll(librarySongsSnapshot);
 
-            // ✅ update source list
-            songsObservable.setAll(songs);
-            // ✅ update displayed list to match (no search yet)
-            filteredSongs.setAll(songs);
-            // ✅ queue uses displayed list
-            playbackQueue.setQueue(filteredSongs);
+            playbackQueue.setQueue(displayedSongs);
 
             // Reset playback state
             audioPlayer.stopAndDispose();
@@ -308,11 +334,17 @@ public class MainView {
             nextButton.setDisable(true);
             playPauseButton.setText("Play");
 
+            // Returning to library view when importing is simplest
+            showingPlaylist = false;
+            activePlaylistName = null;
+
             statusLabel.setText(
-                    songs.isEmpty()
+                    librarySongsSnapshot.isEmpty()
                             ? "No supported audio files found."
-                            : "Imported " + songs.size() + " song(s) from: " + selected.getName()
+                            : "Imported " + librarySongsSnapshot.size() + " song(s) from: " + selected.getName()
             );
+
+            refreshPlaylistButtons();
 
         } catch (IllegalArgumentException ex) {
             statusLabel.setText("Import failed: " + ex.getMessage());
@@ -340,5 +372,219 @@ public class MainView {
             nowPlayingLabel.setManaged(false);
             nowPlayingLabel.setText("");
         }
+    }
+
+    // ✅ Centralised enable/disable logic
+    // Fix: "Add to Playlist" should NOT depend on selecting a playlist in the list.
+    // It should be enabled when a song is selected AND at least one playlist exists.
+    private void refreshPlaylistButtons() {
+        boolean hasSong = selectedSong != null;
+
+        boolean hasAnyPlaylist = !playlistService.getPlaylists().isEmpty();
+        addToPlaylistButton.setDisable(!(hasSong && hasAnyPlaylist));
+
+        boolean canRemove = hasSong && showingPlaylist && activePlaylistName != null;
+        removeFromPlaylistButton.setDisable(!canRemove);
+    }
+
+    // -------------------------
+    // Playlists
+    // -------------------------
+
+    private void refreshPlaylistsList() {
+        // Include "Library" as first entry for easy return
+        playlistsListView.getItems().setAll("Library");
+        playlistsListView.getItems().addAll(playlistService.getPlaylists());
+
+        // Default select Library
+        if (playlistsListView.getSelectionModel().getSelectedItem() == null) {
+            playlistsListView.getSelectionModel().select("Library");
+        }
+    }
+
+    private void handleCreatePlaylist() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("New Playlist");
+        dialog.setHeaderText("Create a new playlist");
+        dialog.setContentText("Playlist name:");
+
+        dialog.showAndWait().ifPresent(name -> {
+            try {
+                playlistService.createPlaylist(name);
+                refreshPlaylistsList();
+                statusLabel.setText("Created playlist: " + name.trim());
+                refreshPlaylistButtons();
+            } catch (IllegalArgumentException ex) {
+                statusLabel.setText("Playlist error: " + ex.getMessage());
+            } catch (RuntimeException ex) {
+                statusLabel.setText("Playlist error: unexpected error.");
+            }
+        });
+    }
+
+    private void handleAddSelectedToPlaylist() {
+        if (selectedSong == null) {
+            statusLabel.setText("Select a song first.");
+            return;
+        }
+
+        List<String> playlists = playlistService.getPlaylists();
+        if (playlists.isEmpty()) {
+            statusLabel.setText("Create a playlist first.");
+            return;
+        }
+
+        // If a playlist (not Library) is highlighted, use it as default
+        String highlighted = playlistsListView.getSelectionModel().getSelectedItem();
+        String defaultChoice =
+                (highlighted != null && !highlighted.equals("Library") && playlists.contains(highlighted))
+                        ? highlighted
+                        : playlists.get(0);
+
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(defaultChoice, playlists);
+        dialog.setTitle("Add to Playlist");
+        dialog.setHeaderText("Choose a playlist");
+        dialog.setContentText("Playlist:");
+
+        dialog.showAndWait().ifPresent(name -> {
+            try {
+                playlistService.addSong(name, selectedSong.getId());
+                statusLabel.setText("Added to " + name + ": " + selectedSong.getTitle());
+
+                // If currently viewing that playlist, refresh view
+                if (showingPlaylist && name.equals(activePlaylistName)) {
+                    switchToPlaylistView(activePlaylistName);
+                }
+
+                refreshPlaylistButtons();
+            } catch (IllegalArgumentException ex) {
+                statusLabel.setText("Playlist error: " + ex.getMessage());
+            } catch (RuntimeException ex) {
+                statusLabel.setText("Playlist error: unexpected error.");
+            }
+        });
+    }
+
+    private void handleRemoveSelectedFromPlaylist() {
+        if (!showingPlaylist || activePlaylistName == null) {
+            statusLabel.setText("Open a playlist first to remove songs.");
+            return;
+        }
+        if (selectedSong == null) {
+            statusLabel.setText("Select a song to remove.");
+            return;
+        }
+
+        try {
+            playlistService.removeSong(activePlaylistName, selectedSong.getId());
+            statusLabel.setText("Removed from " + activePlaylistName + ": " + selectedSong.getTitle());
+
+            // Refresh playlist view
+            switchToPlaylistView(activePlaylistName);
+            refreshPlaylistButtons();
+        } catch (IllegalArgumentException ex) {
+            statusLabel.setText("Playlist error: " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            statusLabel.setText("Playlist error: unexpected error.");
+        }
+    }
+
+    private void switchToPlaylistView(String playlistName) {
+        showingPlaylist = true;
+        activePlaylistName = playlistName;
+
+        // Build playlist songs from IDs
+        List<String> ids = playlistService.getSongIds(playlistName);
+        List<Song> playlistSongs = libraryService.resolveSongsByIds(ids);
+
+        // Apply search text on top of playlist view
+        String q = searchField.getText();
+        displayedSongs.setAll(filterSongs(playlistSongs, q));
+
+        // Reset selection & queue to displayed list
+        songsListView.getSelectionModel().clearSelection();
+        selectedSong = null;
+
+        playbackQueue.setQueue(displayedSongs);
+
+        playPauseButton.setDisable(true);
+        prevButton.setDisable(true);
+        nextButton.setDisable(true);
+        playPauseButton.setText("Play");
+
+        selectedLabel.setText("Selected: —");
+        updateNowPlayingHint();
+
+        refreshPlaylistButtons();
+    }
+
+    private void switchToLibraryView() {
+        showingPlaylist = false;
+        activePlaylistName = null;
+
+        String q = searchField.getText();
+        displayedSongs.setAll(filterSongs(librarySongsSnapshot, q));
+
+        songsListView.getSelectionModel().clearSelection();
+        selectedSong = null;
+
+        playbackQueue.setQueue(displayedSongs);
+
+        playPauseButton.setDisable(true);
+        prevButton.setDisable(true);
+        nextButton.setDisable(true);
+        playPauseButton.setText("Play");
+
+        selectedLabel.setText("Selected: —");
+        updateNowPlayingHint();
+
+        refreshPlaylistButtons();
+    }
+
+    private void applySearchFilter(String query) {
+        if (showingPlaylist && activePlaylistName != null) {
+            List<String> ids = playlistService.getSongIds(activePlaylistName);
+            List<Song> base = libraryService.resolveSongsByIds(ids);
+            displayedSongs.setAll(filterSongs(base, query));
+        } else {
+            displayedSongs.setAll(filterSongs(librarySongsSnapshot, query));
+        }
+
+        // Search changes the displayed list, so update queue to match displayed list.
+        playbackQueue.setQueue(displayedSongs);
+
+        // Keep selection simple: clear it
+        songsListView.getSelectionModel().clearSelection();
+        selectedSong = null;
+
+        playPauseButton.setDisable(true);
+        prevButton.setDisable(true);
+        nextButton.setDisable(true);
+        playPauseButton.setText("Play");
+
+        selectedLabel.setText("Selected: —");
+        updateNowPlayingHint();
+
+        refreshPlaylistButtons();
+    }
+
+    private List<Song> filterSongs(List<Song> base, String query) {
+        if (base == null) return List.of();
+        String q = (query == null) ? "" : query.trim().toLowerCase();
+
+        if (q.isBlank()) {
+            return base;
+        }
+
+        return base.stream()
+                .filter(s -> containsIgnoreCase(s.getTitle(), q)
+                        || containsIgnoreCase(s.getArtist(), q)
+                        || containsIgnoreCase(s.getAlbum(), q))
+                .toList();
+    }
+
+    private boolean containsIgnoreCase(String haystack, String needleLower) {
+        if (haystack == null) return false;
+        return haystack.toLowerCase().contains(needleLower);
     }
 }

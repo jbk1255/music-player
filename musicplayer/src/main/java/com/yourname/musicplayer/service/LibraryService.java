@@ -20,6 +20,12 @@ public class LibraryService {
     public void importFolder(Path folder) {
         validateFolder(folder);
 
+        // Reset current library on import (simple + predictable for this assignment stage)
+        songsById.clear();
+        songOrder.clear();
+        artistToSongIds.clear();
+        albumToSongIds.clear();
+
         try (Stream<Path> paths = Files.walk(folder)) {
             paths.filter(Files::isRegularFile)
                     .filter(this::isSupportedAudioFile)
@@ -34,37 +40,25 @@ public class LibraryService {
         List<Song> songs = new ArrayList<>();
         for (String id : songOrder) {
             Song s = songsById.get(id);
-            if (s != null) {
-                songs.add(s);
-            }
+            if (s != null) songs.add(s);
         }
         return Collections.unmodifiableList(songs);
-    }
-
-    // ✅ Merge 7: simple search
-    public List<Song> search(String query) {
-        if (query == null || query.isBlank()) {
-            return getAllSongs();
-        }
-
-        String q = query.trim().toLowerCase(Locale.ROOT);
-
-        List<Song> results = new ArrayList<>();
-        for (Song s : getAllSongs()) {
-            String title = safeLower(s.getTitle());
-            String artist = safeLower(s.getArtist());
-            String album = safeLower(s.getAlbum());
-
-            if (title.contains(q) || artist.contains(q) || album.contains(q)) {
-                results.add(s);
-            }
-        }
-        return results;
     }
 
     public Optional<Song> getSongById(String id) {
         if (id == null) return Optional.empty();
         return Optional.ofNullable(songsById.get(id.trim()));
+    }
+
+    // ✅ Helper for playlists: convert list of ids -> list of Song in that id order
+    public List<Song> resolveSongsByIds(List<String> songIds) {
+        if (songIds == null) return List.of();
+        List<Song> out = new ArrayList<>();
+        for (String id : songIds) {
+            Song s = (id == null) ? null : songsById.get(id);
+            if (s != null) out.add(s);
+        }
+        return Collections.unmodifiableList(out);
     }
 
     public Map<String, List<String>> getArtistToSongIds() {
@@ -76,22 +70,15 @@ public class LibraryService {
     }
 
     private void validateFolder(Path folder) {
-        if (folder == null) {
-            throw new IllegalArgumentException("folder must not be null");
-        }
-        if (!Files.exists(folder)) {
-            throw new IllegalArgumentException("folder does not exist: " + folder);
-        }
-        if (!Files.isDirectory(folder)) {
-            throw new IllegalArgumentException("path is not a directory: " + folder);
-        }
+        if (folder == null) throw new IllegalArgumentException("folder must not be null");
+        if (!Files.exists(folder)) throw new IllegalArgumentException("folder does not exist: " + folder);
+        if (!Files.isDirectory(folder)) throw new IllegalArgumentException("path is not a directory: " + folder);
     }
 
     private boolean isSupportedAudioFile(Path file) {
         String name = file.getFileName().toString();
         int dot = name.lastIndexOf('.');
         if (dot < 0 || dot == name.length() - 1) return false;
-
         String ext = name.substring(dot + 1).toLowerCase(Locale.ROOT);
         return SUPPORTED_EXTENSIONS.contains(ext);
     }
@@ -129,9 +116,5 @@ public class LibraryService {
             copy.put(e.getKey(), Collections.unmodifiableList(new ArrayList<>(e.getValue())));
         }
         return Collections.unmodifiableMap(copy);
-    }
-
-    private String safeLower(String s) {
-        return (s == null) ? "" : s.toLowerCase(Locale.ROOT);
     }
 }
