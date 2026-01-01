@@ -21,6 +21,14 @@ public class App extends Application {
         stage.setMinWidth(900);
         stage.setMinHeight(560);
         stage.setScene(scene);
+
+        stage.setOnCloseRequest(e -> {
+            try {
+                mainView.saveState();
+            } catch (RuntimeException ex) {
+            }
+        });
+
         stage.show();
     }
 

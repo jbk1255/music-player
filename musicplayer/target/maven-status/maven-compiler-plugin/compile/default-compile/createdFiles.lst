@@ -1,9 +1,12 @@
+com/yourname/musicplayer/persistence/JsonStore.class
+com/yourname/musicplayer/persistence/JsonStore$SongRecord.class
+com/yourname/musicplayer/domain/Song.class
+com/yourname/musicplayer/ui/MainView$1.class
+com/yourname/musicplayer/persistence/JsonStore$StoredData.class
+com/yourname/musicplayer/player/PlaybackQueue.class
+com/yourname/musicplayer/service/LibraryService.class
 com/yourname/musicplayer/service/PlaylistService.class
 com/yourname/musicplayer/player/AudioPlayer.class
 com/yourname/musicplayer/domain/Playlist.class
-com/yourname/musicplayer/domain/Song.class
 com/yourname/musicplayer/ui/MainView.class
 com/yourname/musicplayer/App.class
-com/yourname/musicplayer/ui/MainView$1.class
-com/yourname/musicplayer/player/PlaybackQueue.class
-com/yourname/musicplayer/service/LibraryService.class

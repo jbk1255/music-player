@@ -10,7 +10,7 @@ import java.util.stream.Stream;
 public class LibraryService {
 
     private final Map<String, Song> songsById = new HashMap<>();
-    private final List<String> songOrder = new ArrayList<>(); // preserves display order
+    private final List<String> songOrder = new ArrayList<>();
 
     private final Map<String, List<String>> artistToSongIds = new HashMap<>();
     private final Map<String, List<String>> albumToSongIds = new HashMap<>();
@@ -20,11 +20,7 @@ public class LibraryService {
     public void importFolder(Path folder) {
         validateFolder(folder);
 
-        // Reset current library on import (simple + predictable for this assignment stage)
-        songsById.clear();
-        songOrder.clear();
-        artistToSongIds.clear();
-        albumToSongIds.clear();
+        clear();
 
         try (Stream<Path> paths = Files.walk(folder)) {
             paths.filter(Files::isRegularFile)
@@ -50,7 +46,22 @@ public class LibraryService {
         return Optional.ofNullable(songsById.get(id.trim()));
     }
 
-    // ✅ Helper for playlists: convert list of ids -> list of Song in that id order
+    public void loadLibrary(List<Song> songs) {
+        clear();
+
+        if (songs == null) return;
+
+        for (Song s : songs) {
+            if (s == null) continue;
+
+            songsById.put(s.getId(), s);
+            songOrder.add(s.getId());
+
+            indexAppend(artistToSongIds, s.getArtist(), s.getId());
+            indexAppend(albumToSongIds, s.getAlbum(), s.getId());
+        }
+    }
+
     public List<Song> resolveSongsByIds(List<String> songIds) {
         if (songIds == null) return List.of();
         List<Song> out = new ArrayList<>();
@@ -67,6 +78,13 @@ public class LibraryService {
 
     public Map<String, List<String>> getAlbumToSongIds() {
         return unmodifiableCopyMapOfLists(albumToSongIds);
+    }
+
+    private void clear() {
+        songsById.clear();
+        songOrder.clear();
+        artistToSongIds.clear();
+        albumToSongIds.clear();
     }
 
     private void validateFolder(Path folder) {

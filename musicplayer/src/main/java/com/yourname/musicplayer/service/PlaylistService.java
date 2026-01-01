@@ -4,11 +4,9 @@ import java.util.*;
 
 public class PlaylistService {
 
-    // Keep insertion order for nicer UI display
     private final Map<String, LinkedHashSet<String>> playlists = new LinkedHashMap<>();
 
     public PlaylistService() {
-        // optional seed
         createPlaylist("Favorites");
         createPlaylist("Study Mix");
         createPlaylist("Gym");
@@ -66,6 +64,36 @@ public class PlaylistService {
             throw new IllegalArgumentException("Playlist not found: " + pl);
         }
         return Collections.unmodifiableList(new ArrayList<>(ids));
+    }
+
+    public Map<String, List<String>> exportPlaylists() {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, LinkedHashSet<String>> e : playlists.entrySet()) {
+            out.put(e.getKey(), new ArrayList<>(e.getValue()));
+        }
+        return out;
+    }
+
+    public void loadPlaylists(Map<String, List<String>> data) {
+        playlists.clear();
+
+        if (data == null) return;
+
+        for (Map.Entry<String, List<String>> e : data.entrySet()) {
+            String name = normalizeName(e.getKey());
+            if (name.isBlank()) continue;
+
+            LinkedHashSet<String> ids = new LinkedHashSet<>();
+            if (e.getValue() != null) {
+                for (String id : e.getValue()) {
+                    if (id != null && !id.isBlank()) {
+                        ids.add(id.trim());
+                    }
+                }
+            }
+
+            playlists.put(name, ids);
+        }
     }
 
     public boolean hasPlaylist(String playlistName) {
