@@ -17,16 +17,18 @@ public class LibraryService {
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("mp3", "wav", "m4a");
 
+    /**
+     * Merge-import: adds new songs from folder WITHOUT wiping existing library.
+     * Duplicate files (same path => same stable id) are ignored.
+     */
     public void importFolder(Path folder) {
         validateFolder(folder);
-
-        clear();
 
         try (Stream<Path> paths = Files.walk(folder)) {
             paths.filter(Files::isRegularFile)
                     .filter(this::isSupportedAudioFile)
                     .sorted()
-                    .forEach(this::addFileAsSong);
+                    .forEach(this::addFileAsSongIfMissing);
         } catch (IOException e) {
             throw new RuntimeException("Failed to scan folder: " + folder, e);
         }
@@ -46,6 +48,10 @@ public class LibraryService {
         return Optional.ofNullable(songsById.get(id.trim()));
     }
 
+    /**
+     * Used by JSON load: replace in-memory library with saved library.
+     * (Clearing here is correct.)
+     */
     public void loadLibrary(List<Song> songs) {
         clear();
 
@@ -53,6 +59,9 @@ public class LibraryService {
 
         for (Song s : songs) {
             if (s == null) continue;
+
+            // Avoid accidental duplicates if JSON contains repeats
+            if (songsById.containsKey(s.getId())) continue;
 
             songsById.put(s.getId(), s);
             songOrder.add(s.getId());
@@ -101,7 +110,10 @@ public class LibraryService {
         return SUPPORTED_EXTENSIONS.contains(ext);
     }
 
-    private void addFileAsSong(Path file) {
+    /**
+     * Adds song if not already present by id (stable id derived from path).
+     */
+    private void addFileAsSongIfMissing(Path file) {
         String filename = file.getFileName().toString();
         String title = stripExtension(filename);
 
@@ -110,6 +122,10 @@ public class LibraryService {
         String path = file.toAbsolutePath().toString();
 
         Song song = new Song(title, artist, album, path);
+
+        if (songsById.containsKey(song.getId())) {
+            return; // already imported previously
+        }
 
         songsById.put(song.getId(), song);
         songOrder.add(song.getId());

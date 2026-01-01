@@ -1,18 +1,23 @@
 package com.yourname.musicplayer.domain;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.UUID;
 
 public final class Song {
 
-    private final String id; 
+    private final String id;
     private final String title;
     private final String artist;
     private final String album;
     private final String path;
 
+    /**
+     * Creates a Song with a STABLE id derived from its file path.
+     * This prevents playlist songIds from breaking when you re-import.
+     */
     public Song(String title, String artist, String album, String path) {
-        this(UUID.randomUUID().toString(), title, artist, album, path);
+        this(stableIdFromPath(path), title, artist, album, path);
     }
 
     public Song(String id, String title, String artist, String album, String path) {
@@ -21,6 +26,15 @@ public final class Song {
         this.artist = requireNonBlank(artist, "artist");
         this.album = requireNonBlank(album, "album");
         this.path = requireNonBlank(path, "path");
+    }
+
+    /**
+     * Stable UUID based on the absolute path (lowercased).
+     * If you import the same file again, it gets the same id.
+     */
+    private static String stableIdFromPath(String path) {
+        String safe = (path == null) ? "" : path.trim().toLowerCase();
+        return UUID.nameUUIDFromBytes(safe.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     public String getId() {
