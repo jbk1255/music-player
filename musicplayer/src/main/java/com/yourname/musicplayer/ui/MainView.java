@@ -53,8 +53,10 @@ public class MainView {
     private String activePlaylistName = null;
 
     private final Button newPlaylistButton = new Button("New Playlist");
-    private final Button addToPlaylistButton = new Button("Add to Playlist");
-    private final Button removeFromPlaylistButton = new Button("Remove Song");
+    private final Button addToPlaylistButton = new Button("Add Song to Playlist");
+    private final Button removeFromPlaylistButton = new Button("Remove Song from Playlist");
+
+    private final Button deletePlaylistButton = new Button("Delete Playlist");
 
     private final JsonStore jsonStore = new JsonStore();
 
@@ -126,9 +128,10 @@ public class MainView {
         songsPane.setPadding(new Insets(0, 10, 0, 0));
         VBox.setVgrow(songsListView, Priority.ALWAYS);
 
-        HBox playlistActions = new HBox(8, newPlaylistButton, addToPlaylistButton, removeFromPlaylistButton);
+        HBox playlistActions = new HBox(8, newPlaylistButton, addToPlaylistButton, removeFromPlaylistButton, deletePlaylistButton);
         addToPlaylistButton.setDisable(true);
         removeFromPlaylistButton.setDisable(true);
+        deletePlaylistButton.setDisable(true);
 
         VBox playlistsPane = new VBox(
                 6,
@@ -136,7 +139,7 @@ public class MainView {
                 playlistsListView,
                 playlistActions
         );
-        playlistsPane.setPrefWidth(280);
+        playlistsPane.setPrefWidth(320);
         VBox.setVgrow(playlistsListView, Priority.ALWAYS);
 
         SplitPane splitPane = new SplitPane(songsPane, playlistsPane);
@@ -271,6 +274,8 @@ public class MainView {
         newPlaylistButton.setOnAction(e -> handleCreatePlaylist());
         addToPlaylistButton.setOnAction(e -> handleAddSelectedToPlaylist());
         removeFromPlaylistButton.setOnAction(e -> handleRemoveSelectedFromPlaylist());
+
+        deletePlaylistButton.setOnAction(e -> handleDeletePlaylist());
 
         playlistsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal == null) {
@@ -407,6 +412,10 @@ public class MainView {
 
         boolean canRemove = hasSong && showingPlaylist && activePlaylistName != null;
         removeFromPlaylistButton.setDisable(!canRemove);
+
+        String selectedPlaylist = playlistsListView.getSelectionModel().getSelectedItem();
+        boolean canDelete = selectedPlaylist != null && !selectedPlaylist.equals("Library");
+        deletePlaylistButton.setDisable(!canDelete);
     }
 
     private void refreshPlaylistsList() {
@@ -436,6 +445,40 @@ public class MainView {
                 statusLabel.setText("Playlist error: unexpected error.");
             }
         });
+    }
+
+    private void handleDeletePlaylist() {
+        String selectedPlaylist = playlistsListView.getSelectionModel().getSelectedItem();
+        if (selectedPlaylist == null || selectedPlaylist.equals("Library")) {
+            statusLabel.setText("Select a playlist to delete.");
+            return;
+        }
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Delete Playlist");
+        confirm.setHeaderText("Delete playlist: " + selectedPlaylist + "?");
+        confirm.setContentText("This will remove the playlist (songs remain in Library).");
+
+        Optional<ButtonType> result = confirm.showAndWait();
+        if (result.isEmpty() || result.get() != ButtonType.OK) return;
+
+        try {
+            playlistService.deletePlaylist(selectedPlaylist);
+
+            if (showingPlaylist && selectedPlaylist.equals(activePlaylistName)) {
+                switchToLibraryView();
+                playlistsListView.getSelectionModel().select("Library");
+            }
+
+            refreshPlaylistsList();
+            refreshPlaylistButtons();
+            statusLabel.setText("Deleted playlist: " + selectedPlaylist);
+
+        } catch (IllegalArgumentException ex) {
+            statusLabel.setText("Playlist error: " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            statusLabel.setText("Playlist error: unexpected error.");
+        }
     }
 
     private void handleAddSelectedToPlaylist() {
@@ -580,9 +623,7 @@ public class MainView {
         if (base == null) return List.of();
         String q = (query == null) ? "" : query.trim().toLowerCase();
 
-        if (q.isBlank()) {
-            return base;
-        }
+        if (q.isBlank()) return base;
 
         return base.stream()
                 .filter(s -> containsIgnoreCase(s.getTitle(), q)
