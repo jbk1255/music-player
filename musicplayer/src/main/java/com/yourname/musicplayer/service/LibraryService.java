@@ -3,6 +3,7 @@ package com.yourname.musicplayer.service;
 import com.yourname.musicplayer.domain.Song;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
@@ -15,12 +16,10 @@ public class LibraryService {
     private final Map<String, List<String>> artistToSongIds = new HashMap<>();
     private final Map<String, List<String>> albumToSongIds = new HashMap<>();
 
+    private final Map<String, String> pathToSongId = new HashMap<>();
+
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("mp3", "wav", "m4a");
 
-    /**
-     * Merge-import: adds new songs from folder WITHOUT wiping existing library.
-     * Duplicate files (same path => same stable id) are ignored.
-     */
     public void importFolder(Path folder) {
         validateFolder(folder);
 
@@ -32,6 +31,10 @@ public class LibraryService {
         } catch (IOException e) {
             throw new RuntimeException("Failed to scan folder: " + folder, e);
         }
+    }
+
+    public void clearLibrary() {
+        clear();
     }
 
     public List<Song> getAllSongs() {
@@ -48,10 +51,6 @@ public class LibraryService {
         return Optional.ofNullable(songsById.get(id.trim()));
     }
 
-    /**
-     * Used by JSON load: replace in-memory library with saved library.
-     * (Clearing here is correct.)
-     */
     public void loadLibrary(List<Song> songs) {
         clear();
 
@@ -60,11 +59,10 @@ public class LibraryService {
         for (Song s : songs) {
             if (s == null) continue;
 
-            // Avoid accidental duplicates if JSON contains repeats
-            if (songsById.containsKey(s.getId())) continue;
-
             songsById.put(s.getId(), s);
             songOrder.add(s.getId());
+
+            pathToSongId.put(s.getPath(), s.getId());
 
             indexAppend(artistToSongIds, s.getArtist(), s.getId());
             indexAppend(albumToSongIds, s.getAlbum(), s.getId());
@@ -94,6 +92,7 @@ public class LibraryService {
         songOrder.clear();
         artistToSongIds.clear();
         albumToSongIds.clear();
+        pathToSongId.clear();
     }
 
     private void validateFolder(Path folder) {
@@ -110,25 +109,24 @@ public class LibraryService {
         return SUPPORTED_EXTENSIONS.contains(ext);
     }
 
-    /**
-     * Adds song if not already present by id (stable id derived from path).
-     */
     private void addFileAsSongIfMissing(Path file) {
+        String path = file.toAbsolutePath().toString();
+
+        if (pathToSongId.containsKey(path)) return;
+
         String filename = file.getFileName().toString();
         String title = stripExtension(filename);
 
         String artist = "Unknown Artist";
         String album = "Unknown Album";
-        String path = file.toAbsolutePath().toString();
 
-        Song song = new Song(title, artist, album, path);
+        String stableId = UUID.nameUUIDFromBytes(path.getBytes(StandardCharsets.UTF_8)).toString();
 
-        if (songsById.containsKey(song.getId())) {
-            return; // already imported previously
-        }
+        Song song = new Song(stableId, title, artist, album, path);
 
         songsById.put(song.getId(), song);
         songOrder.add(song.getId());
+        pathToSongId.put(path, song.getId());
 
         indexAppend(artistToSongIds, song.getArtist(), song.getId());
         indexAppend(albumToSongIds, song.getAlbum(), song.getId());

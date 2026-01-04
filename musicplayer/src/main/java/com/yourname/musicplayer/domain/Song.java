@@ -12,10 +12,6 @@ public final class Song {
     private final String album;
     private final String path;
 
-    /**
-     * Creates a Song with a STABLE id derived from its file path.
-     * This prevents playlist songIds from breaking when you re-import.
-     */
     public Song(String title, String artist, String album, String path) {
         this(stableIdFromPath(path), title, artist, album, path);
     }
@@ -28,10 +24,6 @@ public final class Song {
         this.path = requireNonBlank(path, "path");
     }
 
-    /**
-     * Stable UUID based on the absolute path (lowercased).
-     * If you import the same file again, it gets the same id.
-     */
     private static String stableIdFromPath(String path) {
         String safe = (path == null) ? "" : path.trim().toLowerCase();
         return UUID.nameUUIDFromBytes(safe.getBytes(StandardCharsets.UTF_8)).toString();

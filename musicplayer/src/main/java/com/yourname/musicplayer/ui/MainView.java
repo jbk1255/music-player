@@ -27,6 +27,8 @@ public class MainView {
     private final TextField searchField = new TextField();
     private final Button importFolderButton = new Button("Import Folder");
 
+    private final Button resetLibraryButton = new Button("Reset Library");
+
     private final ListView<Song> songsListView = new ListView<>();
     private final ListView<String> playlistsListView = new ListView<>();
 
@@ -53,8 +55,8 @@ public class MainView {
     private String activePlaylistName = null;
 
     private final Button newPlaylistButton = new Button("New Playlist");
-    private final Button addToPlaylistButton = new Button("Add Song to Playlist");
-    private final Button removeFromPlaylistButton = new Button("Remove Song from Playlist");
+    private final Button addToPlaylistButton = new Button("Add to Playlist");
+    private final Button removeFromPlaylistButton = new Button("Remove Song");
 
     private final Button deletePlaylistButton = new Button("Delete Playlist");
 
@@ -120,7 +122,7 @@ public class MainView {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox topBar = new HBox(10, title, spacer, searchField, importFolderButton);
+        HBox topBar = new HBox(10, title, spacer, searchField, importFolderButton, resetLibraryButton);
         topBar.setPadding(new Insets(0, 0, 10, 0));
         root.setTop(topBar);
 
@@ -235,6 +237,8 @@ public class MainView {
         importFolderButton.setOnAction(e -> handleImportFolder());
         playPauseButton.setOnAction(e -> handlePlayPause());
 
+        resetLibraryButton.setOnAction(e -> handleResetLibrary());
+
         prevButton.setOnAction(e -> {
             Song prev = playbackQueue.prev();
             if (prev == null) return;
@@ -295,6 +299,83 @@ public class MainView {
         searchField.textProperty().addListener((obs, oldVal, newVal) -> applySearchFilter(newVal));
     }
 
+    private void handleResetLibrary() {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Reset Library");
+        confirm.setHeaderText("Clear all songs from the library?");
+        confirm.setContentText("Playlists will remain, but their songs won’t show/play until you import again.");
+
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+
+        audioPlayer.stopAndDispose();
+
+        libraryService.clearLibrary();
+        librarySongsSnapshot = List.of();
+
+        showingPlaylist = false;
+        activePlaylistName = null;
+
+        displayedSongs.clear();
+        playbackQueue.setQueue(displayedSongs);
+
+        songsListView.getSelectionModel().clearSelection();
+        selectedSong = null;
+
+        selectedLabel.setText("Selected: —");
+
+        nowPlayingLabel.setVisible(false);
+        nowPlayingLabel.setManaged(false);
+        nowPlayingLabel.setText("");
+
+        playPauseButton.setDisable(true);
+        prevButton.setDisable(true);
+        nextButton.setDisable(true);
+        playPauseButton.setText("Play");
+
+        statusLabel.setText("Library cleared. Import a folder to add songs again.");
+        refreshPlaylistButtons();
+
+        saveState();
+
+        playlistsListView.getSelectionModel().select("Library");
+    }
+
+    private void handleDeletePlaylist() {
+        String selected = playlistsListView.getSelectionModel().getSelectedItem();
+
+        if (selected == null || selected.equals("Library")) {
+            statusLabel.setText("Cannot delete Library.");
+            return;
+        }
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Delete Playlist");
+        confirm.setHeaderText("Delete playlist \"" + selected + "\"?");
+        confirm.setContentText("This cannot be undone.");
+
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+
+        try {
+            playlistService.deletePlaylist(selected);
+
+            showingPlaylist = false;
+            activePlaylistName = null;
+
+            refreshPlaylistsList();
+            playlistsListView.getSelectionModel().select("Library");
+            switchToLibraryView();
+
+            refreshPlaylistButtons();
+            saveState();
+
+            statusLabel.setText("Deleted playlist: " + selected);
+        } catch (IllegalArgumentException ex) {
+            statusLabel.setText("Playlist error: " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            statusLabel.setText("Playlist error: unexpected error.");
+        }
+    }
+
     private void handlePlayPause() {
         if (selectedSong == null) {
             statusLabel.setText("Select a song first.");
@@ -346,36 +427,42 @@ public class MainView {
         if (selected == null) return;
 
         try {
+            int before = libraryService.getAllSongs().size();
+
             Path folderPath = selected.toPath();
             libraryService.importFolder(folderPath);
 
             librarySongsSnapshot = libraryService.getAllSongs();
-            displayedSongs.setAll(librarySongsSnapshot);
+            int after = librarySongsSnapshot.size();
+            int added = after - before;
 
-            playbackQueue.setQueue(displayedSongs);
+            if (showingPlaylist && activePlaylistName != null) {
+                switchToPlaylistView(activePlaylistName);
+            } else {
+                displayedSongs.setAll(filterSongs(librarySongsSnapshot, searchField.getText()));
+                playbackQueue.setQueue(displayedSongs);
 
-            audioPlayer.stopAndDispose();
-            selectedSong = null;
-            songsListView.getSelectionModel().clearSelection();
+                audioPlayer.stopAndDispose();
+                selectedSong = null;
+                songsListView.getSelectionModel().clearSelection();
 
-            selectedLabel.setText("Selected: —");
-            updateNowPlayingHint();
+                selectedLabel.setText("Selected: —");
+                updateNowPlayingHint();
 
-            playPauseButton.setDisable(true);
-            prevButton.setDisable(true);
-            nextButton.setDisable(true);
-            playPauseButton.setText("Play");
-
-            showingPlaylist = false;
-            activePlaylistName = null;
+                playPauseButton.setDisable(true);
+                prevButton.setDisable(true);
+                nextButton.setDisable(true);
+                playPauseButton.setText("Play");
+            }
 
             statusLabel.setText(
-                    librarySongsSnapshot.isEmpty()
-                            ? "No supported audio files found."
-                            : "Imported " + librarySongsSnapshot.size() + " song(s) from: " + selected.getName()
+                    added <= 0
+                            ? "No new supported audio files found in: " + selected.getName()
+                            : "Added " + added + " song(s) from: " + selected.getName() + " (Total: " + after + ")"
             );
 
             refreshPlaylistButtons();
+            saveState();
 
         } catch (IllegalArgumentException ex) {
             statusLabel.setText("Import failed: " + ex.getMessage());
@@ -410,12 +497,12 @@ public class MainView {
         boolean hasAnyPlaylist = !playlistService.getPlaylists().isEmpty();
         addToPlaylistButton.setDisable(!(hasSong && hasAnyPlaylist));
 
-        boolean canRemove = hasSong && showingPlaylist && activePlaylistName != null;
-        removeFromPlaylistButton.setDisable(!canRemove);
+        boolean canRemoveSong = hasSong && showingPlaylist && activePlaylistName != null;
+        removeFromPlaylistButton.setDisable(!canRemoveSong);
 
         String selectedPlaylist = playlistsListView.getSelectionModel().getSelectedItem();
-        boolean canDelete = selectedPlaylist != null && !selectedPlaylist.equals("Library");
-        deletePlaylistButton.setDisable(!canDelete);
+        boolean canDeletePlaylist = selectedPlaylist != null && !selectedPlaylist.equals("Library");
+        deletePlaylistButton.setDisable(!canDeletePlaylist);
     }
 
     private void refreshPlaylistsList() {
@@ -439,46 +526,13 @@ public class MainView {
                 refreshPlaylistsList();
                 statusLabel.setText("Created playlist: " + name.trim());
                 refreshPlaylistButtons();
+                saveState();
             } catch (IllegalArgumentException ex) {
                 statusLabel.setText("Playlist error: " + ex.getMessage());
             } catch (RuntimeException ex) {
                 statusLabel.setText("Playlist error: unexpected error.");
             }
         });
-    }
-
-    private void handleDeletePlaylist() {
-        String selectedPlaylist = playlistsListView.getSelectionModel().getSelectedItem();
-        if (selectedPlaylist == null || selectedPlaylist.equals("Library")) {
-            statusLabel.setText("Select a playlist to delete.");
-            return;
-        }
-
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-        confirm.setTitle("Delete Playlist");
-        confirm.setHeaderText("Delete playlist: " + selectedPlaylist + "?");
-        confirm.setContentText("This will remove the playlist (songs remain in Library).");
-
-        Optional<ButtonType> result = confirm.showAndWait();
-        if (result.isEmpty() || result.get() != ButtonType.OK) return;
-
-        try {
-            playlistService.deletePlaylist(selectedPlaylist);
-
-            if (showingPlaylist && selectedPlaylist.equals(activePlaylistName)) {
-                switchToLibraryView();
-                playlistsListView.getSelectionModel().select("Library");
-            }
-
-            refreshPlaylistsList();
-            refreshPlaylistButtons();
-            statusLabel.setText("Deleted playlist: " + selectedPlaylist);
-
-        } catch (IllegalArgumentException ex) {
-            statusLabel.setText("Playlist error: " + ex.getMessage());
-        } catch (RuntimeException ex) {
-            statusLabel.setText("Playlist error: unexpected error.");
-        }
     }
 
     private void handleAddSelectedToPlaylist() {
@@ -514,6 +568,7 @@ public class MainView {
                 }
 
                 refreshPlaylistButtons();
+                saveState();
             } catch (IllegalArgumentException ex) {
                 statusLabel.setText("Playlist error: " + ex.getMessage());
             } catch (RuntimeException ex) {
@@ -538,6 +593,7 @@ public class MainView {
 
             switchToPlaylistView(activePlaylistName);
             refreshPlaylistButtons();
+            saveState();
         } catch (IllegalArgumentException ex) {
             statusLabel.setText("Playlist error: " + ex.getMessage());
         } catch (RuntimeException ex) {
@@ -569,6 +625,10 @@ public class MainView {
         updateNowPlayingHint();
 
         refreshPlaylistButtons();
+
+        if (!ids.isEmpty() && playlistSongs.isEmpty()) {
+            statusLabel.setText("This playlist has songs, but they are not currently in the library. Import the folder again.");
+        }
     }
 
     private void switchToLibraryView() {
