@@ -1,8 +1,11 @@
 package com.yourname.musicplayer.player;
 
 import com.yourname.musicplayer.domain.Song;
+import javafx.application.Platform;
+import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
+import javafx.util.Duration;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,8 +34,11 @@ public class AudioPlayer {
         currentSong = song;
 
         mediaPlayer.setOnError(() -> {
+            RuntimeException err = (mediaPlayer != null && mediaPlayer.getError() != null)
+                    ? mediaPlayer.getError()
+                    : new RuntimeException("Unknown MediaPlayer error");
             stopAndDispose();
-            throw mediaPlayer.getError();
+            throw err;
         });
 
         mediaPlayer.play();
@@ -75,5 +81,50 @@ public class AudioPlayer {
             }
         }
         currentSong = null;
+    }
+
+    // -------------------------
+    // Progress bar support
+    // -------------------------
+
+    public boolean hasMedia() {
+        return mediaPlayer != null;
+    }
+
+    public Duration getCurrentTime() {
+        return (mediaPlayer == null) ? Duration.ZERO : mediaPlayer.getCurrentTime();
+    }
+
+    public Duration getTotalDuration() {
+        if (mediaPlayer == null) return Duration.UNKNOWN;
+        Duration d = mediaPlayer.getTotalDuration();
+        return (d == null) ? Duration.UNKNOWN : d;
+    }
+
+    public ReadOnlyObjectProperty<Duration> currentTimeProperty() {
+        return (mediaPlayer == null) ? null : mediaPlayer.currentTimeProperty();
+    }
+
+    public void seek(Duration time) {
+        if (mediaPlayer == null || time == null) return;
+
+        // MediaPlayer.seek must happen on FX thread
+        if (Platform.isFxApplicationThread()) {
+            mediaPlayer.seek(time);
+        } else {
+            Platform.runLater(() -> {
+                if (mediaPlayer != null) mediaPlayer.seek(time);
+            });
+        }
+    }
+
+    public void setOnEndOfMedia(Runnable r) {
+        if (mediaPlayer == null) return;
+        mediaPlayer.setOnEndOfMedia(r);
+    }
+
+    public void setOnReady(Runnable r) {
+        if (mediaPlayer == null) return;
+        mediaPlayer.setOnReady(r);
     }
 }

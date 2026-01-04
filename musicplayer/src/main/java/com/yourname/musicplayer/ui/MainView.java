@@ -6,13 +6,14 @@ import com.yourname.musicplayer.player.AudioPlayer;
 import com.yourname.musicplayer.player.PlaybackQueue;
 import com.yourname.musicplayer.service.LibraryService;
 import com.yourname.musicplayer.service.PlaylistService;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
+import javafx.animation.AnimationTimer;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
+import javafx.util.Duration;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -26,7 +27,6 @@ public class MainView {
 
     private final TextField searchField = new TextField();
     private final Button importFolderButton = new Button("Import Folder");
-
     private final Button resetLibraryButton = new Button("Reset Library");
 
     private final ListView<Song> songsListView = new ListView<>();
@@ -43,7 +43,8 @@ public class MainView {
     private final LibraryService libraryService = new LibraryService();
     private final PlaylistService playlistService = new PlaylistService();
 
-    private final ObservableList<Song> displayedSongs = FXCollections.observableArrayList();
+    private final javafx.collections.ObservableList<Song> displayedSongs =
+            javafx.collections.FXCollections.observableArrayList();
     private List<Song> librarySongsSnapshot = List.of();
 
     private final AudioPlayer audioPlayer = new AudioPlayer();
@@ -57,10 +58,19 @@ public class MainView {
     private final Button newPlaylistButton = new Button("New Playlist");
     private final Button addToPlaylistButton = new Button("Add to Playlist");
     private final Button removeFromPlaylistButton = new Button("Remove Song");
-
     private final Button deletePlaylistButton = new Button("Delete Playlist");
 
     private final JsonStore jsonStore = new JsonStore();
+
+    // -------------------------
+    // NEW: progress / seek UI
+    // -------------------------
+    private final Slider progressSlider = new Slider(0, 1, 0);
+    private final Label currentTimeLabel = new Label("0:00");
+    private final Label durationLabel = new Label("0:00");
+    private boolean userDragging = false;
+
+    private AnimationTimer progressTimer;
 
     public MainView() {
         buildLayout();
@@ -71,6 +81,8 @@ public class MainView {
 
         refreshPlaylistsList();
         refreshPlaylistButtons();
+
+        initProgressBar();
     }
 
     public Parent getRoot() {
@@ -152,8 +164,9 @@ public class MainView {
         playPauseButton.setTooltip(new Tooltip("Play / Pause"));
         nextButton.setTooltip(new Tooltip("Next"));
 
+        // Bottom controls
         HBox controls = new HBox(10, prevButton, playPauseButton, nextButton);
-        controls.setPadding(new Insets(10, 0, 0, 0));
+        controls.setAlignment(Pos.CENTER_LEFT);
 
         nowPlayingLabel.setVisible(false);
         nowPlayingLabel.setManaged(false);
@@ -163,7 +176,20 @@ public class MainView {
         Region bottomSpacer = new Region();
         HBox.setHgrow(bottomSpacer, Priority.ALWAYS);
 
-        HBox bottomBar = new HBox(12, controls, bottomSpacer, rightLabels);
+        // NEW: progress row (Spotify-like)
+        progressSlider.setDisable(true);
+        progressSlider.setMin(0);
+        progressSlider.setMax(1);
+        progressSlider.setValue(0);
+
+        HBox progressRow = new HBox(10, currentTimeLabel, progressSlider, durationLabel);
+        progressRow.setAlignment(Pos.CENTER);
+        HBox.setHgrow(progressSlider, Priority.ALWAYS);
+
+        HBox bottomButtonsRow = new HBox(12, controls, bottomSpacer, rightLabels);
+        bottomButtonsRow.setPadding(new Insets(6, 0, 0, 0));
+
+        VBox bottomBar = new VBox(6, progressRow, bottomButtonsRow);
         bottomBar.setPadding(new Insets(10, 0, 0, 0));
         root.setBottom(bottomBar);
 
@@ -208,6 +234,7 @@ public class MainView {
                 nextButton.setDisable(true);
                 playPauseButton.setText("Play");
 
+                resetProgressUI();
                 refreshPlaylistButtons();
                 return;
             }
@@ -236,7 +263,6 @@ public class MainView {
 
         importFolderButton.setOnAction(e -> handleImportFolder());
         playPauseButton.setOnAction(e -> handlePlayPause());
-
         resetLibraryButton.setOnAction(e -> handleResetLibrary());
 
         prevButton.setOnAction(e -> {
@@ -248,6 +274,8 @@ public class MainView {
             selectedLabel.setText("Selected: " + prev);
 
             audioPlayer.loadAndPlay(prev);
+            afterTrackLoadedSetup();
+
             playPauseButton.setText("Pause");
             updateNowPlayingHint();
 
@@ -266,6 +294,8 @@ public class MainView {
             selectedLabel.setText("Selected: " + next);
 
             audioPlayer.loadAndPlay(next);
+            afterTrackLoadedSetup();
+
             playPauseButton.setText("Pause");
             updateNowPlayingHint();
 
@@ -278,7 +308,6 @@ public class MainView {
         newPlaylistButton.setOnAction(e -> handleCreatePlaylist());
         addToPlaylistButton.setOnAction(e -> handleAddSelectedToPlaylist());
         removeFromPlaylistButton.setOnAction(e -> handleRemoveSelectedFromPlaylist());
-
         deletePlaylistButton.setOnAction(e -> handleDeletePlaylist());
 
         playlistsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
@@ -299,6 +328,123 @@ public class MainView {
         searchField.textProperty().addListener((obs, oldVal, newVal) -> applySearchFilter(newVal));
     }
 
+    // -------------------------
+    // Progress bar logic
+    // -------------------------
+
+    private void initProgressBar() {
+        // Drag detection
+        progressSlider.setOnMousePressed(e -> userDragging = true);
+        progressSlider.setOnMouseReleased(e -> {
+            if (!audioPlayer.hasMedia()) {
+                userDragging = false;
+                return;
+            }
+
+            Duration total = audioPlayer.getTotalDuration();
+            if (total == null || total.isUnknown() || total.lessThanOrEqualTo(Duration.ZERO)) {
+                userDragging = false;
+                return;
+            }
+
+            double seconds = progressSlider.getValue();
+            audioPlayer.seek(Duration.seconds(seconds));
+            userDragging = false;
+        });
+
+        progressSlider.valueChangingProperty().addListener((obs, wasChanging, isChanging) -> userDragging = isChanging);
+
+        // Smooth UI updates
+        progressTimer = new AnimationTimer() {
+            @Override
+            public void handle(long now) {
+                if (!audioPlayer.hasMedia()) return;
+
+                Duration total = audioPlayer.getTotalDuration();
+                Duration current = audioPlayer.getCurrentTime();
+
+                if (total == null || total.isUnknown() || total.lessThanOrEqualTo(Duration.ZERO)) return;
+                if (current == null) current = Duration.ZERO;
+
+                durationLabel.setText(formatTime(total));
+
+                if (!userDragging) {
+                    progressSlider.setDisable(false);
+                    progressSlider.setMax(total.toSeconds());
+                    progressSlider.setValue(current.toSeconds());
+                }
+
+                currentTimeLabel.setText(formatTime(current));
+            }
+        };
+        progressTimer.start();
+    }
+
+    private void afterTrackLoadedSetup() {
+        resetProgressUI();
+
+        audioPlayer.setOnReady(() -> {
+            Duration total = audioPlayer.getTotalDuration();
+            if (total == null || total.isUnknown() || total.lessThanOrEqualTo(Duration.ZERO)) {
+                resetProgressUI();
+                return;
+            }
+            progressSlider.setDisable(false);
+            progressSlider.setMax(total.toSeconds());
+            durationLabel.setText(formatTime(total));
+        });
+
+        // Optional: auto-next at end
+        audioPlayer.setOnEndOfMedia(() -> {
+            Song next = playbackQueue.next();
+            if (next == null) {
+                playPauseButton.setText("Play");
+                return;
+            }
+
+            songsListView.getSelectionModel().select(playbackQueue.getCurrentIndex());
+            selectedSong = next;
+            selectedLabel.setText("Selected: " + next);
+
+            audioPlayer.loadAndPlay(next);
+            afterTrackLoadedSetup();
+
+            playPauseButton.setText("Pause");
+            updateNowPlayingHint();
+
+            prevButton.setDisable(!playbackQueue.hasPrev());
+            nextButton.setDisable(!playbackQueue.hasNext());
+
+            refreshPlaylistButtons();
+        });
+    }
+
+    private void resetProgressUI() {
+        progressSlider.setDisable(true);
+        progressSlider.setMin(0);
+        progressSlider.setMax(1);
+        progressSlider.setValue(0);
+        currentTimeLabel.setText("0:00");
+        durationLabel.setText("0:00");
+        userDragging = false;
+    }
+
+    private String formatTime(Duration d) {
+        if (d == null || d.isUnknown()) return "0:00";
+
+        int totalSeconds = (int) Math.floor(d.toSeconds());
+        if (totalSeconds < 0) totalSeconds = 0;
+
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+
+        return minutes + ":" + String.format("%02d", seconds);
+    }
+
+    // -------------------------
+    // Existing features
+    // -------------------------
+
     private void handleResetLibrary() {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
         confirm.setTitle("Reset Library");
@@ -308,6 +454,7 @@ public class MainView {
         if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
 
         audioPlayer.stopAndDispose();
+        resetProgressUI();
 
         libraryService.clearLibrary();
         librarySongsSnapshot = List.of();
@@ -385,6 +532,8 @@ public class MainView {
         try {
             if (audioPlayer.getCurrentSong() == null || !selectedSong.equals(audioPlayer.getCurrentSong())) {
                 audioPlayer.loadAndPlay(selectedSong);
+                afterTrackLoadedSetup();
+
                 playPauseButton.setText("Pause");
 
                 prevButton.setDisable(!playbackQueue.hasPrev());
@@ -427,6 +576,8 @@ public class MainView {
         if (selected == null) return;
 
         try {
+            // NOTE: this "added" message assumes your LibraryService.importFolder() adds/merges.
+            // If your LibraryService still "replaces", then change there (not here).
             int before = libraryService.getAllSongs().size();
 
             Path folderPath = selected.toPath();
@@ -443,6 +594,8 @@ public class MainView {
                 playbackQueue.setQueue(displayedSongs);
 
                 audioPlayer.stopAndDispose();
+                resetProgressUI();
+
                 selectedSong = null;
                 songsListView.getSelectionModel().clearSelection();
 
@@ -624,6 +777,7 @@ public class MainView {
         selectedLabel.setText("Selected: —");
         updateNowPlayingHint();
 
+        resetProgressUI();
         refreshPlaylistButtons();
 
         if (!ids.isEmpty() && playlistSongs.isEmpty()) {
@@ -651,6 +805,7 @@ public class MainView {
         selectedLabel.setText("Selected: —");
         updateNowPlayingHint();
 
+        resetProgressUI();
         refreshPlaylistButtons();
     }
 
@@ -676,6 +831,7 @@ public class MainView {
         selectedLabel.setText("Selected: —");
         updateNowPlayingHint();
 
+        resetProgressUI();
         refreshPlaylistButtons();
     }
 

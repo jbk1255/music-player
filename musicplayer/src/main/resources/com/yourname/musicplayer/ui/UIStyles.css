@@ -12,3 +12,26 @@
   -fx-background-radius: 8px;
   -fx-border-radius: 8px;
 }
+
+/* --- player bar styling --- */
+.player-bar {
+  -fx-padding: 8 0 0 0;
+}
+
+.player-progress-row {
+  -fx-padding: 2 0 0 0;
+}
+
+.player-progress-row .label {
+  -fx-font-size: 12px;
+  -fx-opacity: 0.85;
+}
+
+/* Make the slider thumb slightly nicer */
+.slider .thumb {
+  -fx-background-radius: 10px;
+}
+
+.slider .track {
+  -fx-background-radius: 10px;
+}
