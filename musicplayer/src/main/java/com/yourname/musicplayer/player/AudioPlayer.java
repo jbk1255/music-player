@@ -45,26 +45,19 @@ public class AudioPlayer {
     }
 
     public void pause() {
-        if (mediaPlayer != null) {
-            mediaPlayer.pause();
-        }
+        if (mediaPlayer != null) mediaPlayer.pause();
     }
 
     public void resume() {
-        if (mediaPlayer != null) {
-            mediaPlayer.play();
-        }
+        if (mediaPlayer != null) mediaPlayer.play();
     }
 
     public void stop() {
-        if (mediaPlayer != null) {
-            mediaPlayer.stop();
-        }
+        if (mediaPlayer != null) mediaPlayer.stop();
     }
 
     public boolean isPlaying() {
-        return mediaPlayer != null &&
-               mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING;
+        return mediaPlayer != null && mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING;
     }
 
     public Song getCurrentSong() {
@@ -82,10 +75,6 @@ public class AudioPlayer {
         }
         currentSong = null;
     }
-
-    // -------------------------
-    // Progress bar support
-    // -------------------------
 
     public boolean hasMedia() {
         return mediaPlayer != null;
@@ -108,7 +97,6 @@ public class AudioPlayer {
     public void seek(Duration time) {
         if (mediaPlayer == null || time == null) return;
 
-        // MediaPlayer.seek must happen on FX thread
         if (Platform.isFxApplicationThread()) {
             mediaPlayer.seek(time);
         } else {
@@ -126,5 +114,20 @@ public class AudioPlayer {
     public void setOnReady(Runnable r) {
         if (mediaPlayer == null) return;
         mediaPlayer.setOnReady(r);
+    }
+
+    public void setOnPlaying(Runnable r) {
+        if (mediaPlayer == null) return;
+        mediaPlayer.setOnPlaying(r);
+    }
+
+    public void setOnPaused(Runnable r) {
+        if (mediaPlayer == null) return;
+        mediaPlayer.setOnPaused(r);
+    }
+
+    public void setOnStopped(Runnable r) {
+        if (mediaPlayer == null) return;
+        mediaPlayer.setOnStopped(r);
     }
 }

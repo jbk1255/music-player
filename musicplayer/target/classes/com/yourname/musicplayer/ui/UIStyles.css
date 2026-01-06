@@ -13,9 +13,27 @@
   -fx-border-radius: 8px;
 }
 
-/* --- player bar styling --- */
+.active-view {
+  -fx-font-size: 12px;
+  -fx-opacity: 0.80;
+}
+
+.now-playing {
+  -fx-font-size: 13px;
+  -fx-font-weight: 700;
+}
+
+.selected-weak {
+  -fx-font-size: 12px;
+  -fx-opacity: 0.75;
+}
+
 .player-bar {
-  -fx-padding: 8 0 0 0;
+  -fx-background-color: derive(-fx-base, 6%);
+  -fx-background-radius: 10px;
+  -fx-border-radius: 10px;
+  -fx-border-color: derive(-fx-base, -15%);
+  -fx-border-width: 1px;
 }
 
 .player-progress-row {
@@ -27,7 +45,19 @@
   -fx-opacity: 0.85;
 }
 
-/* Make the slider thumb slightly nicer */
+.icon-btn {
+  -fx-font-size: 14px;
+  -fx-min-width: 42px;
+  -fx-min-height: 32px;
+  -fx-background-radius: 10px;
+}
+
+.play-btn {
+  -fx-font-size: 15px;
+  -fx-min-width: 48px;
+  -fx-min-height: 36px;
+}
+
 .slider .thumb {
   -fx-background-radius: 10px;
 }

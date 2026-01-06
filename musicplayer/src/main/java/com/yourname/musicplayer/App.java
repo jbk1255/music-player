@@ -11,15 +11,15 @@ public class App extends Application {
     public void start(Stage stage) {
         MainView mainView = new MainView();
 
-        Scene scene = new Scene(mainView.getRoot(), 1000, 620);
+        Scene scene = new Scene(mainView.getRoot(), 1800, 800);
 
         scene.getStylesheets().add(
                 getClass().getResource("/com/yourname/musicplayer/ui/UIStyles.css").toExternalForm()
         );
 
         stage.setTitle("Music Player");
-        stage.setMinWidth(900);
-        stage.setMinHeight(560);
+        stage.setMinWidth(1100);
+        stage.setMinHeight(720);
         stage.setScene(scene);
 
         stage.setOnCloseRequest(e -> {

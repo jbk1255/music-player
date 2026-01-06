@@ -7,11 +7,13 @@ import com.yourname.musicplayer.player.PlaybackQueue;
 import com.yourname.musicplayer.service.LibraryService;
 import com.yourname.musicplayer.service.PlaylistService;
 import javafx.animation.AnimationTimer;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.scene.shape.SVGPath;
 import javafx.stage.DirectoryChooser;
 import javafx.util.Duration;
 
@@ -32,12 +34,14 @@ public class MainView {
     private final ListView<Song> songsListView = new ListView<>();
     private final ListView<String> playlistsListView = new ListView<>();
 
-    private final Button prevButton = new Button("Prev");
-    private final Button playPauseButton = new Button("Play");
-    private final Button nextButton = new Button("Next");
+    private final Button prevButton = new Button();
+    private final Button playPauseButton = new Button();
+    private final Button nextButton = new Button();
 
+    private final Label activeViewLabel = new Label("Viewing: Library");
+
+    private final Label nowPlayingLabel = new Label("Not Playing");
     private final Label selectedLabel = new Label("Selected: —");
-    private final Label nowPlayingLabel = new Label("Now Playing: —");
     private final Label statusLabel = new Label("");
 
     private final LibraryService libraryService = new LibraryService();
@@ -62,15 +66,17 @@ public class MainView {
 
     private final JsonStore jsonStore = new JsonStore();
 
-    // -------------------------
-    // NEW: progress / seek UI
-    // -------------------------
     private final Slider progressSlider = new Slider(0, 1, 0);
     private final Label currentTimeLabel = new Label("0:00");
     private final Label durationLabel = new Label("0:00");
     private boolean userDragging = false;
 
     private AnimationTimer progressTimer;
+
+    private final SVGPath iconPrev = makeIcon("M6 6h2v12H6z M9.5 12l10 6V6z");
+    private final SVGPath iconNext = makeIcon("M6 6l10 6-10 6V6z M18 6h2v12h-2z");
+    private final SVGPath iconPlay = makeIcon("M8 6v12l10-6z");
+    private final SVGPath iconPause = makeIcon("M7 6h4v12H7z M13 6h4v12h-4z");
 
     public MainView() {
         buildLayout();
@@ -83,6 +89,8 @@ public class MainView {
         refreshPlaylistButtons();
 
         initProgressBar();
+        setActiveViewLabel();
+        updateNowPlayingHint();
     }
 
     public Parent getRoot() {
@@ -138,11 +146,15 @@ public class MainView {
         topBar.setPadding(new Insets(0, 0, 10, 0));
         root.setTop(topBar);
 
-        VBox songsPane = new VBox(6, sectionHeader("Library"), statusLabel, songsListView);
+        activeViewLabel.getStyleClass().add("active-view");
+
+        VBox songsPane = new VBox(6, activeViewLabel, statusLabel, songsListView);
         songsPane.setPadding(new Insets(0, 10, 0, 0));
         VBox.setVgrow(songsListView, Priority.ALWAYS);
 
         HBox playlistActions = new HBox(8, newPlaylistButton, addToPlaylistButton, removeFromPlaylistButton, deletePlaylistButton);
+        playlistActions.setAlignment(Pos.CENTER_LEFT);
+
         addToPlaylistButton.setDisable(true);
         removeFromPlaylistButton.setDisable(true);
         deletePlaylistButton.setDisable(true);
@@ -153,44 +165,45 @@ public class MainView {
                 playlistsListView,
                 playlistActions
         );
-        playlistsPane.setPrefWidth(320);
+        playlistsPane.setPrefWidth(360);
         VBox.setVgrow(playlistsListView, Priority.ALWAYS);
 
         SplitPane splitPane = new SplitPane(songsPane, playlistsPane);
         splitPane.setDividerPositions(0.7);
         root.setCenter(splitPane);
 
-        prevButton.setTooltip(new Tooltip("Previous"));
-        playPauseButton.setTooltip(new Tooltip("Play / Pause"));
-        nextButton.setTooltip(new Tooltip("Next"));
+        setupIconButton(prevButton, iconPrev, "Previous");
+        setupIconButton(playPauseButton, iconPlay, "Play / Pause");
+        setupIconButton(nextButton, iconNext, "Next");
 
-        // Bottom controls
         HBox controls = new HBox(10, prevButton, playPauseButton, nextButton);
         controls.setAlignment(Pos.CENTER_LEFT);
 
-        nowPlayingLabel.setVisible(false);
-        nowPlayingLabel.setManaged(false);
+        nowPlayingLabel.getStyleClass().add("now-playing");
+        selectedLabel.getStyleClass().add("selected-weak");
 
-        VBox rightLabels = new VBox(2, selectedLabel, nowPlayingLabel);
+        VBox rightLabels = new VBox(2, nowPlayingLabel, selectedLabel);
+        rightLabels.setAlignment(Pos.CENTER_RIGHT);
 
         Region bottomSpacer = new Region();
         HBox.setHgrow(bottomSpacer, Priority.ALWAYS);
 
-        // NEW: progress row (Spotify-like)
         progressSlider.setDisable(true);
         progressSlider.setMin(0);
         progressSlider.setMax(1);
         progressSlider.setValue(0);
 
         HBox progressRow = new HBox(10, currentTimeLabel, progressSlider, durationLabel);
+        progressRow.getStyleClass().add("player-progress-row");
         progressRow.setAlignment(Pos.CENTER);
         HBox.setHgrow(progressSlider, Priority.ALWAYS);
 
         HBox bottomButtonsRow = new HBox(12, controls, bottomSpacer, rightLabels);
-        bottomButtonsRow.setPadding(new Insets(6, 0, 0, 0));
+        bottomButtonsRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox bottomBar = new VBox(6, progressRow, bottomButtonsRow);
-        bottomBar.setPadding(new Insets(10, 0, 0, 0));
+        bottomBar.getStyleClass().add("player-bar");
+        bottomBar.setPadding(new Insets(10, 10, 10, 10));
         root.setBottom(bottomBar);
 
         prevButton.setDisable(true);
@@ -227,14 +240,14 @@ public class MainView {
                 playbackQueue.playAt(-1);
 
                 selectedLabel.setText("Selected: —");
-                updateNowPlayingHint();
 
                 playPauseButton.setDisable(true);
                 prevButton.setDisable(true);
                 nextButton.setDisable(true);
-                playPauseButton.setText("Play");
+                setPlayPauseIcon(false);
 
                 resetProgressUI();
+                updateNowPlayingHint();
                 refreshPlaylistButtons();
                 return;
             }
@@ -244,20 +257,19 @@ public class MainView {
             playbackQueue.playAt(idx);
 
             selectedLabel.setText("Selected: " + selectedSong);
-            updateNowPlayingHint();
 
             playPauseButton.setDisable(false);
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
 
-            if (audioPlayer.getCurrentSong() != null
-                    && selectedSong.equals(audioPlayer.getCurrentSong())
-                    && audioPlayer.isPlaying()) {
-                playPauseButton.setText("Pause");
-            } else {
-                playPauseButton.setText("Play");
-            }
+            boolean isSameAndPlaying =
+                    audioPlayer.getCurrentSong() != null
+                            && selectedSong.equals(audioPlayer.getCurrentSong())
+                            && audioPlayer.isPlaying();
 
+            setPlayPauseIcon(isSameAndPlaying);
+
+            updateNowPlayingHint();
             refreshPlaylistButtons();
         });
 
@@ -276,9 +288,6 @@ public class MainView {
             audioPlayer.loadAndPlay(prev);
             afterTrackLoadedSetup();
 
-            playPauseButton.setText("Pause");
-            updateNowPlayingHint();
-
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
 
@@ -295,9 +304,6 @@ public class MainView {
 
             audioPlayer.loadAndPlay(next);
             afterTrackLoadedSetup();
-
-            playPauseButton.setText("Pause");
-            updateNowPlayingHint();
 
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
@@ -322,18 +328,14 @@ public class MainView {
                 switchToPlaylistView(newVal);
             }
 
+            setActiveViewLabel();
             refreshPlaylistButtons();
         });
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> applySearchFilter(newVal));
     }
 
-    // -------------------------
-    // Progress bar logic
-    // -------------------------
-
     private void initProgressBar() {
-        // Drag detection
         progressSlider.setOnMousePressed(e -> userDragging = true);
         progressSlider.setOnMouseReleased(e -> {
             if (!audioPlayer.hasMedia()) {
@@ -354,7 +356,6 @@ public class MainView {
 
         progressSlider.valueChangingProperty().addListener((obs, wasChanging, isChanging) -> userDragging = isChanging);
 
-        // Smooth UI updates
         progressTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
@@ -383,22 +384,39 @@ public class MainView {
     private void afterTrackLoadedSetup() {
         resetProgressUI();
 
-        audioPlayer.setOnReady(() -> {
+        audioPlayer.setOnReady(() -> Platform.runLater(() -> {
             Duration total = audioPlayer.getTotalDuration();
             if (total == null || total.isUnknown() || total.lessThanOrEqualTo(Duration.ZERO)) {
                 resetProgressUI();
+                updateNowPlayingHint();
                 return;
             }
             progressSlider.setDisable(false);
             progressSlider.setMax(total.toSeconds());
             durationLabel.setText(formatTime(total));
-        });
+            updateNowPlayingHint();
+        }));
 
-        // Optional: auto-next at end
-        audioPlayer.setOnEndOfMedia(() -> {
+        audioPlayer.setOnPlaying(() -> Platform.runLater(() -> {
+            setPlayPauseIcon(true);
+            updateNowPlayingHint();
+        }));
+
+        audioPlayer.setOnPaused(() -> Platform.runLater(() -> {
+            setPlayPauseIcon(false);
+            updateNowPlayingHint();
+        }));
+
+        audioPlayer.setOnStopped(() -> Platform.runLater(() -> {
+            setPlayPauseIcon(false);
+            updateNowPlayingHint();
+        }));
+
+        audioPlayer.setOnEndOfMedia(() -> Platform.runLater(() -> {
             Song next = playbackQueue.next();
             if (next == null) {
-                playPauseButton.setText("Play");
+                setPlayPauseIcon(false);
+                updateNowPlayingHint();
                 return;
             }
 
@@ -409,14 +427,11 @@ public class MainView {
             audioPlayer.loadAndPlay(next);
             afterTrackLoadedSetup();
 
-            playPauseButton.setText("Pause");
-            updateNowPlayingHint();
-
             prevButton.setDisable(!playbackQueue.hasPrev());
             nextButton.setDisable(!playbackQueue.hasNext());
 
             refreshPlaylistButtons();
-        });
+        }));
     }
 
     private void resetProgressUI() {
@@ -441,9 +456,46 @@ public class MainView {
         return minutes + ":" + String.format("%02d", seconds);
     }
 
-    // -------------------------
-    // Existing features
-    // -------------------------
+    private void setActiveViewLabel() {
+        if (showingPlaylist && activePlaylistName != null && !activePlaylistName.isBlank()) {
+            activeViewLabel.setText("Viewing: " + activePlaylistName);
+        } else {
+            activeViewLabel.setText("Viewing: Library");
+        }
+    }
+
+    private void updateNowPlayingHint() {
+        Song playing = audioPlayer.getCurrentSong();
+
+        if (playing != null && audioPlayer.isPlaying()) {
+            nowPlayingLabel.setText("Now Playing: " + playing);
+        } else if (playing != null) {
+            nowPlayingLabel.setText("Paused: " + playing);
+        } else {
+            nowPlayingLabel.setText("Not Playing");
+        }
+    }
+
+    private void setupIconButton(Button btn, SVGPath icon, String tooltip) {
+        btn.getStyleClass().addAll("icon-btn");
+        btn.setGraphic(icon);
+        btn.setText(null);
+        btn.setTooltip(new Tooltip(tooltip));
+        btn.setFocusTraversable(false);
+        btn.setMinWidth(44);
+        btn.setMinHeight(34);
+    }
+
+    private void setPlayPauseIcon(boolean playing) {
+        playPauseButton.setGraphic(playing ? iconPause : iconPlay);
+    }
+
+    private SVGPath makeIcon(String path) {
+        SVGPath svg = new SVGPath();
+        svg.setContent(path);
+        svg.getStyleClass().add("icon");
+        return svg;
+    }
 
     private void handleResetLibrary() {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
@@ -461,6 +513,7 @@ public class MainView {
 
         showingPlaylist = false;
         activePlaylistName = null;
+        setActiveViewLabel();
 
         displayedSongs.clear();
         playbackQueue.setQueue(displayedSongs);
@@ -470,21 +523,18 @@ public class MainView {
 
         selectedLabel.setText("Selected: —");
 
-        nowPlayingLabel.setVisible(false);
-        nowPlayingLabel.setManaged(false);
-        nowPlayingLabel.setText("");
-
         playPauseButton.setDisable(true);
         prevButton.setDisable(true);
         nextButton.setDisable(true);
-        playPauseButton.setText("Play");
+        setPlayPauseIcon(false);
 
         statusLabel.setText("Library cleared. Import a folder to add songs again.");
         refreshPlaylistButtons();
 
         saveState();
-
         playlistsListView.getSelectionModel().select("Library");
+
+        updateNowPlayingHint();
     }
 
     private void handleDeletePlaylist() {
@@ -507,6 +557,7 @@ public class MainView {
 
             showingPlaylist = false;
             activePlaylistName = null;
+            setActiveViewLabel();
 
             refreshPlaylistsList();
             playlistsListView.getSelectionModel().select("Library");
@@ -534,27 +585,21 @@ public class MainView {
                 audioPlayer.loadAndPlay(selectedSong);
                 afterTrackLoadedSetup();
 
-                playPauseButton.setText("Pause");
-
                 prevButton.setDisable(!playbackQueue.hasPrev());
                 nextButton.setDisable(!playbackQueue.hasNext());
 
                 statusLabel.setText("");
-                updateNowPlayingHint();
                 refreshPlaylistButtons();
                 return;
             }
 
             if (audioPlayer.isPlaying()) {
                 audioPlayer.pause();
-                playPauseButton.setText("Play");
             } else {
                 audioPlayer.resume();
-                playPauseButton.setText("Pause");
             }
 
             statusLabel.setText("");
-            updateNowPlayingHint();
             refreshPlaylistButtons();
 
         } catch (IllegalArgumentException ex) {
@@ -576,8 +621,6 @@ public class MainView {
         if (selected == null) return;
 
         try {
-            // NOTE: this "added" message assumes your LibraryService.importFolder() adds/merges.
-            // If your LibraryService still "replaces", then change there (not here).
             int before = libraryService.getAllSongs().size();
 
             Path folderPath = selected.toPath();
@@ -605,7 +648,7 @@ public class MainView {
                 playPauseButton.setDisable(true);
                 prevButton.setDisable(true);
                 nextButton.setDisable(true);
-                playPauseButton.setText("Play");
+                setPlayPauseIcon(false);
             }
 
             statusLabel.setText(
@@ -621,26 +664,6 @@ public class MainView {
             statusLabel.setText("Import failed: " + ex.getMessage());
         } catch (RuntimeException ex) {
             statusLabel.setText("Import failed due to an unexpected error.");
-        }
-    }
-
-    private void updateNowPlayingHint() {
-        Song playing = audioPlayer.getCurrentSong();
-
-        boolean shouldShow =
-                playing != null
-                        && audioPlayer.isPlaying()
-                        && selectedSong != null
-                        && !selectedSong.equals(playing);
-
-        if (shouldShow) {
-            nowPlayingLabel.setText("Now Playing: " + playing);
-            nowPlayingLabel.setVisible(true);
-            nowPlayingLabel.setManaged(true);
-        } else {
-            nowPlayingLabel.setVisible(false);
-            nowPlayingLabel.setManaged(false);
-            nowPlayingLabel.setText("");
         }
     }
 
@@ -757,6 +780,7 @@ public class MainView {
     private void switchToPlaylistView(String playlistName) {
         showingPlaylist = true;
         activePlaylistName = playlistName;
+        setActiveViewLabel();
 
         List<String> ids = playlistService.getSongIds(playlistName);
         List<Song> playlistSongs = libraryService.resolveSongsByIds(ids);
@@ -772,11 +796,9 @@ public class MainView {
         playPauseButton.setDisable(true);
         prevButton.setDisable(true);
         nextButton.setDisable(true);
-        playPauseButton.setText("Play");
+        setPlayPauseIcon(false);
 
         selectedLabel.setText("Selected: —");
-        updateNowPlayingHint();
-
         resetProgressUI();
         refreshPlaylistButtons();
 
@@ -788,6 +810,7 @@ public class MainView {
     private void switchToLibraryView() {
         showingPlaylist = false;
         activePlaylistName = null;
+        setActiveViewLabel();
 
         String q = searchField.getText();
         displayedSongs.setAll(filterSongs(librarySongsSnapshot, q));
@@ -800,11 +823,9 @@ public class MainView {
         playPauseButton.setDisable(true);
         prevButton.setDisable(true);
         nextButton.setDisable(true);
-        playPauseButton.setText("Play");
+        setPlayPauseIcon(false);
 
         selectedLabel.setText("Selected: —");
-        updateNowPlayingHint();
-
         resetProgressUI();
         refreshPlaylistButtons();
     }
@@ -826,11 +847,9 @@ public class MainView {
         playPauseButton.setDisable(true);
         prevButton.setDisable(true);
         nextButton.setDisable(true);
-        playPauseButton.setText("Play");
+        setPlayPauseIcon(false);
 
         selectedLabel.setText("Selected: —");
-        updateNowPlayingHint();
-
         resetProgressUI();
         refreshPlaylistButtons();
     }
