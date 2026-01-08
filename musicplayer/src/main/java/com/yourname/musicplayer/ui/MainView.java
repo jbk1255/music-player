@@ -12,12 +12,15 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.shape.SVGPath;
 import javafx.stage.DirectoryChooser;
 import javafx.util.Duration;
 
 import java.io.File;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +81,8 @@ public class MainView {
     private final SVGPath iconPlay = makeIcon("M8 6v12l10-6z");
     private final SVGPath iconPause = makeIcon("M7 6h4v12H7z M13 6h4v12h-4z");
 
+    private static final String LOGO_PATH = "/com/yourname/musicplayer/ui/playra_logo_p.png";
+
     public MainView() {
         buildLayout();
         configureListRendering();
@@ -133,8 +138,21 @@ public class MainView {
     private void buildLayout() {
         root.setPadding(new Insets(12));
 
-        Label title = new Label("Music Player");
+        importFolderButton.getStyleClass().add("primary-btn");
+
+        ImageView logoView = buildLogoView();
+
+        Label title = new Label("Playra");
         title.getStyleClass().add("title");
+
+        HBox brand = new HBox(12);
+        brand.getStyleClass().add("brand");
+        brand.setAlignment(Pos.CENTER_LEFT);
+
+        if (logoView != null) {
+            brand.getChildren().add(logoView);
+        }
+        brand.getChildren().add(title);
 
         searchField.setPromptText("Search songs, artists, albums...");
         searchField.setMinWidth(260);
@@ -142,8 +160,10 @@ public class MainView {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox topBar = new HBox(10, title, spacer, searchField, importFolderButton, resetLibraryButton);
-        topBar.setPadding(new Insets(0, 0, 10, 0));
+        HBox topBar = new HBox(12, brand, spacer, searchField, importFolderButton, resetLibraryButton);
+        topBar.setPadding(new Insets(8, 0, 12, 0));
+        topBar.setMinHeight(72);
+        topBar.setAlignment(Pos.CENTER_LEFT);
         root.setTop(topBar);
 
         activeViewLabel.getStyleClass().add("active-view");
@@ -165,6 +185,9 @@ public class MainView {
                 playlistsListView,
                 playlistActions
         );
+
+        playlistsPane.getStyleClass().add("sidebar");
+
         playlistsPane.setPrefWidth(360);
         VBox.setVgrow(playlistsListView, Priority.ALWAYS);
 
@@ -214,6 +237,23 @@ public class MainView {
 
         statusLabel.setWrapText(true);
         statusLabel.setMinHeight(18);
+    }
+
+    private ImageView buildLogoView() {
+        try (InputStream is = getClass().getResourceAsStream(LOGO_PATH)) {
+            if (is == null) return null;
+
+            ImageView iv = new ImageView(new Image(is));
+            iv.getStyleClass().add("brand-logo");
+            iv.setPreserveRatio(true);
+            iv.setSmooth(true);
+
+            iv.setFitHeight(44);
+
+            return iv;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private Label sectionHeader(String text) {

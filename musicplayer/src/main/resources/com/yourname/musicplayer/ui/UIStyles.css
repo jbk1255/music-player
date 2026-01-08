@@ -1,6 +1,7 @@
+
 .title {
-  -fx-font-size: 18px;
-  -fx-font-weight: 700;
+  -fx-font-size: 24px;
+  -fx-font-weight: 800;
 }
 
 .section-header {
@@ -28,6 +29,45 @@
   -fx-opacity: 0.75;
 }
 
+.brand {
+  -fx-alignment: center-left;
+}
+
+.brand-logo {
+  -fx-opacity: 0.96;
+}
+
+.text-field {
+  -fx-pref-height: 30px;
+  -fx-background-radius: 8px;
+  -fx-border-radius: 8px;
+}
+
+.button {
+  -fx-pref-height: 30px;
+  -fx-background-radius: 8px;
+  -fx-border-radius: 8px;
+}
+
+.primary-btn {
+  -fx-font-weight: 700;
+  -fx-background-color: -fx-accent;
+  -fx-text-fill: white;
+}
+
+.primary-btn:hover {
+  -fx-opacity: 0.92;
+}
+
+.sidebar {
+  -fx-background-color: derive(-fx-base, 4%);
+  -fx-background-radius: 10px;
+  -fx-padding: 8px;
+  -fx-border-color: derive(-fx-base, -12%);
+  -fx-border-width: 1px;
+  -fx-border-radius: 10px;
+}
+
 .player-bar {
   -fx-background-color: derive(-fx-base, 6%);
   -fx-background-radius: 10px;
@@ -37,7 +77,7 @@
 }
 
 .player-progress-row {
-  -fx-padding: 2 0 0 0;
+  -fx-padding: 6 0 2 0;
 }
 
 .player-progress-row .label {
@@ -64,4 +104,5 @@
 
 .slider .track {
   -fx-background-radius: 10px;
+  -fx-pref-height: 6px;
 }
