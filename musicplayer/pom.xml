@@ -5,7 +5,7 @@
 
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.yourname.musicplayer</groupId>
+  <groupId>com.johnk.musicplayer</groupId>
   <artifactId>musicplayer</artifactId>
   <version>1.0.0</version>
 
@@ -21,6 +21,7 @@
       <artifactId>javafx-controls</artifactId>
       <version>${javafx.version}</version>
     </dependency>
+
     <dependency>
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-media</artifactId>
@@ -50,7 +51,8 @@
         <artifactId>javafx-maven-plugin</artifactId>
         <version>0.0.8</version>
         <configuration>
-          <mainClass>com.yourname.musicplayer.App</mainClass>
+          <!-- ✅ This must match: package com.johnk.musicplayer; public class App -->
+          <mainClass>com.johnk.musicplayer.App</mainClass>
         </configuration>
       </plugin>
     </plugins>
