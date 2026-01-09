@@ -191,6 +191,22 @@ music-player/
 
 ---
 
+## Platform Compatibility
+
+Playra is a cross-platform JavaFX desktop application and runs on:
+
+- Windows
+- macOS (Intel & Apple Silicon)
+- Linux
+
+Requirements:
+- Java JDK 17+
+- Maven
+
+Note: Audio format support depends on the host operating system’s media codecs.
+
+---
+
 ## 👤 Author
 
 **John Kollannur**  
